@@ -53,7 +53,7 @@ export default function PaginaLogin() {
         <div className={styles.header}>
           <span className={styles.eyebrow}>Hortifruti</span>
           <h1>Login</h1>
-          <p>Acesse o sistema com o usuario administrativo sem usar middleware.</p>
+          <p>Acesse o painel de controle do Hortifruti.</p>
         </div>
 
         {mensagem ? <Message severity={mensagem.severity} text={mensagem.text} /> : null}

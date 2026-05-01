@@ -255,7 +255,7 @@ export default function PaginaDashboard() {
             <article className={styles.alertItem}>
               <div>
                 <strong>Mais vendidos</strong>
-                <p>Use os relatorios para cruzar quantidade vendida, receita e lucro bruto.</p>
+                <p>Compare quantidade vendida, receita e lucro bruto.</p>
               </div>
               <Link className={styles.inlineLink} href="/relatorios">
                 Abrir ranking

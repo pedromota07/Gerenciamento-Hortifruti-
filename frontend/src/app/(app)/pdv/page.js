@@ -283,7 +283,7 @@ export default function PaginaPdv() {
         <div className={styles.panel}>
           <div className={styles.panelHeader}>
             <h2>Ultimas 5 vendas da sessao</h2>
-            <p>Historico local para acompanhamento rapido do uso atual do PDV.</p>
+            <p>Acompanhe as vendas registradas durante o atendimento atual.</p>
           </div>
 
           {ultimasVendas.length === 0 ? (

@@ -307,7 +307,7 @@ export default function PaginaEstoque() {
       <header className={styles.header}>
         <div>
           <h1>Estoque</h1>
-          <p>Gerencie produtos, entradas e saidas manuais sem recarregar a pagina.</p>
+          <p>Gerencie produtos, entradas, saidas e saldos do estoque.</p>
         </div>
 
         <Button label="Cadastrar Produto" icon="pi pi-plus" onClick={() => setModalProduto(true)} />

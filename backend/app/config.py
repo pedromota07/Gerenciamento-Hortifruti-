@@ -1,5 +1,10 @@
 import os
 from datetime import timedelta
+from pathlib import Path
+
+
+BASE_DIR = Path(__file__).resolve().parents[1]
+DEFAULT_DATABASE_URL = f"sqlite:///{(BASE_DIR / 'instance' / 'hortifruti_dev.db').as_posix()}"
 
 
 class Config:
@@ -8,7 +13,7 @@ class Config:
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=8)
     SQLALCHEMY_DATABASE_URI = os.getenv(
         "DATABASE_URL",
-        "mysql+pymysql://root:root@localhost:3306/hortifruti",
+        DEFAULT_DATABASE_URL,
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True}
