@@ -131,7 +131,7 @@ export default function PaginaRelatorios() {
       <header className={styles.header}>
         <div>
           <h1>Relatorios</h1>
-          <p>Visao operacional, financeira e de validade do estoque em um unico lugar.</p>
+          <p>Consulte indicadores de vendas, estoque, financeiro e validade.</p>
         </div>
       </header>
 
@@ -141,7 +141,7 @@ export default function PaginaRelatorios() {
         <div className={styles.panelHeader}>
           <div>
             <h2>Filtros</h2>
-            <p>Aplique periodo, produto e subtipo para refinar os dados do bloco.</p>
+            <p>Filtre os dados por periodo, produto, subtipo e prazo de alerta.</p>
           </div>
           <div className={styles.actions}>
             <Button label="Limpar" text onClick={limparFiltros} disabled={carregando} />
@@ -357,7 +357,7 @@ export default function PaginaRelatorios() {
               <div className={styles.panelHeader}>
                 <div>
                   <h2>Proximos do vencimento</h2>
-                  <p>Produtos que vencem dentro da janela de alerta configurada.</p>
+                  <p>Produtos que vencem dentro do prazo de alerta escolhido.</p>
                 </div>
               </div>
 
@@ -394,7 +394,7 @@ export default function PaginaRelatorios() {
             <div className={styles.panelHeader}>
               <div>
                 <h2>Ultimas 20 movimentacoes</h2>
-                <p>Historico operacional com colunas financeiras para auditoria rapida.</p>
+                <p>Movimentacoes recentes com valores de custo, receita e lucro.</p>
               </div>
             </div>
 

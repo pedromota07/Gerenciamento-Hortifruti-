@@ -4,6 +4,9 @@ from dotenv import load_dotenv
 from flask import Flask, jsonify
 from flask_cors import CORS
 
+BASE_DIR = Path(__file__).resolve().parents[1]
+load_dotenv(BASE_DIR / ".env")
+
 from .auth.routes import auth_bp
 from .config import Config
 from .extensions import db, jwt, migrate
@@ -14,8 +17,6 @@ from .usuarios.routes import usuarios_bp
 
 
 def create_app(config_class=Config):
-    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
-
     app = Flask(__name__)
     app.config.from_object(config_class)
 
