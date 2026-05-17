@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 
@@ -94,74 +94,7 @@ class Produto(db.Model):
         lazy="selectin",
     )
 
-    def _camadas_abertas(self):
-        return [camada for camada in self.camadas_estoque if camada.quantidade_disponivel > Decimal("0")]
-
-    def _quantidade_vencida(self, reference_date):
-        return sum(
-            (
-                camada.quantidade_disponivel
-                for camada in self._camadas_abertas()
-                if camada.data_validade < reference_date
-            ),
-            Decimal("0"),
-        )
-
-    def _quantidade_disponivel_venda(self, reference_date):
-        return sum(
-            (
-                camada.quantidade_disponivel
-                for camada in self._camadas_abertas()
-                if camada.data_validade >= reference_date
-            ),
-            Decimal("0"),
-        )
-
-    def _valor_estoque_custo(self):
-        return sum(
-            (camada.quantidade_disponivel * camada.custo_unitario for camada in self._camadas_abertas()),
-            Decimal("0"),
-        )
-
-    def _valor_estoque_venda(self, reference_date):
-        return sum(
-            (
-                camada.quantidade_disponivel * self.preco_venda_padrao
-                for camada in self._camadas_abertas()
-                if camada.data_validade >= reference_date
-            ),
-            Decimal("0"),
-        )
-
-    def _proxima_validade(self, reference_date):
-        datas = [
-            camada.data_validade
-            for camada in self._camadas_abertas()
-            if camada.data_validade >= reference_date
-        ]
-        return min(datas) if datas else None
-
     def to_dict(self):
-        reference_date = date.today()
-        quantidade_vencida = self._quantidade_vencida(reference_date)
-        quantidade_disponivel_venda = self._quantidade_disponivel_venda(reference_date)
-        proxima_validade = self._proxima_validade(reference_date)
+        from ..serializers.produto import serialize_produto
 
-        return {
-            "id": self.id,
-            "nome": self.nome,
-            "categoria": self.categoria.value,
-            "unidade_medida": self.unidade_medida.value,
-            "estoque_minimo": float(self.estoque_minimo),
-            "preco_venda_padrao": float(self.preco_venda_padrao),
-            "validade_dias_padrao": self.validade_dias_padrao,
-            "quantidade_atual": float(self.quantidade_atual),
-            "quantidade_disponivel_venda": float(quantidade_disponivel_venda),
-            "quantidade_vencida": float(quantidade_vencida),
-            "proxima_validade": proxima_validade.isoformat() if proxima_validade else None,
-            "valor_estoque_custo": float(self._valor_estoque_custo()),
-            "valor_estoque_venda": float(self._valor_estoque_venda(reference_date)),
-            "ativo": self.ativo,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-        }
+        return serialize_produto(self)

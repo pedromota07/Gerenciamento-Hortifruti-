@@ -11,26 +11,8 @@ export function criarProduto(dadosProduto) {
   });
 }
 
-export function registrarEntrada(dadosMovimentacao) {
-  return requisitarApi("/movimentacoes/entrada", {
-    method: "POST",
-    body: JSON.stringify(dadosMovimentacao)
-  });
-}
-
-export function registrarSaida(dadosMovimentacao) {
-  return requisitarApi("/movimentacoes/saida", {
-    method: "POST",
-    body: JSON.stringify(dadosMovimentacao)
-  });
-}
-
 export function buscarProdutoPorId(id) {
   return requisitarApi(`/produtos/${id}`);
-}
-
-export function buscarMovimentacoesPorProduto(id) {
-  return requisitarApi(`/movimentacoes?produto_id=${id}`);
 }
 
 export function buscarCamadasPorProduto(id) {
