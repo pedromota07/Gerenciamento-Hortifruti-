@@ -7,29 +7,12 @@ import { InputNumber } from "primereact/inputnumber";
 import { Message } from "primereact/message";
 import { Toast } from "primereact/toast";
 
-import { buscarProdutos, registrarSaida } from "@/services/produtosService";
+import { registrarSaida } from "@/services/movimentacoesService";
+import { buscarProdutos } from "@/services/produtosService";
+import { formatarMoeda, formatarQuantidade } from "@/utils/formatters";
+import { estoqueEstaBaixo } from "@/utils/produtos";
 
 import styles from "./page.module.css";
-
-function formatarQuantidade(valor) {
-  return Number(valor ?? 0).toLocaleString("pt-BR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  });
-}
-
-function formatarMoeda(valor) {
-  return Number(valor ?? 0).toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  });
-}
-
-function estoqueEstaBaixo(produto) {
-  return Number(produto?.quantidade_disponivel_venda ?? produto?.quantidade_atual ?? 0) < Number(produto?.estoque_minimo ?? 0);
-}
 
 export default function PaginaPdv() {
   const notificacaoRef = useRef(null);

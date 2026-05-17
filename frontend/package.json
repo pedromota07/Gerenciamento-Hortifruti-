@@ -8,11 +8,10 @@
     "start": "next start"
   },
   "dependencies": {
-    "next": "14",
+    "next": "^16.2.6",
     "primeicons": "^7.0.0",
     "primereact": "^10.0.0",
     "react": "18",
     "react-dom": "18"
   }
 }
-
