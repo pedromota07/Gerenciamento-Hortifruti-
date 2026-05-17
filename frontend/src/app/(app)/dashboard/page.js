@@ -10,36 +10,10 @@ import { Tag } from "primereact/tag";
 
 import { buscarProdutos } from "@/services/produtosService";
 import { buscarFinanceiro, buscarHistoricoGeral, buscarValidade } from "@/services/relatoriosService";
+import { formatarData, formatarMoeda, formatarQuantidade } from "@/utils/formatters";
+import { estoqueEstaBaixo } from "@/utils/produtos";
 
 import styles from "./page.module.css";
-
-function formatarQuantidade(valor) {
-  return Number(valor ?? 0).toLocaleString("pt-BR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  });
-}
-
-function formatarDataHora(valor) {
-  if (!valor) {
-    return "-";
-  }
-
-  return new Date(`${valor}T00:00:00`).toLocaleDateString("pt-BR");
-}
-
-function formatarMoeda(valor) {
-  return Number(valor ?? 0).toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  });
-}
-
-function estoqueEstaBaixo(produto) {
-  return Number(produto.quantidade_disponivel_venda ?? produto.quantidade_atual ?? 0) < Number(produto.estoque_minimo ?? 0);
-}
 
 export default function PaginaDashboard() {
   const [produtos, setProdutos] = useState([]);
@@ -155,7 +129,7 @@ export default function PaginaDashboard() {
             emptyMessage="Nenhuma movimentacao recente encontrada."
             responsiveLayout="scroll"
           >
-            <Column field="data" header="Data" body={(linha) => formatarDataHora(linha.data)} />
+            <Column field="data" header="Data" body={(linha) => formatarData(linha.data)} />
             <Column field="produto_nome" header="Produto" />
             <Column field="tipo" header="Tipo" />
             <Column

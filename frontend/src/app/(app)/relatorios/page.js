@@ -17,6 +17,7 @@ import {
   buscarMaisVendidos,
   buscarValidade
 } from "@/services/relatoriosService";
+import { formatarData, formatarMoeda, formatarQuantidade } from "@/utils/formatters";
 
 import styles from "./page.module.css";
 
@@ -27,30 +28,6 @@ const FILTROS_INICIAIS = {
   data_final: "",
   dias_alerta: 3
 };
-
-function formatarQuantidade(valor) {
-  return Number(valor ?? 0).toLocaleString("pt-BR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  });
-}
-
-function formatarMoeda(valor) {
-  return Number(valor ?? 0).toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  });
-}
-
-function formatarData(valor) {
-  if (!valor) {
-    return "-";
-  }
-
-  return new Date(`${valor}T00:00:00`).toLocaleDateString("pt-BR");
-}
 
 function montarFiltrosPeriodo(filtros) {
   return {
