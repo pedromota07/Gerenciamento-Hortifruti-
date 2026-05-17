@@ -9,16 +9,15 @@ import { Dialog } from "primereact/dialog";
 import { Dropdown } from "primereact/dropdown";
 import { InputNumber } from "primereact/inputnumber";
 import { InputText } from "primereact/inputtext";
-import { InputTextarea } from "primereact/inputtextarea";
 import { Message } from "primereact/message";
 import { Tag } from "primereact/tag";
 
-import {
-  criarProduto,
-  buscarProdutos,
-  registrarEntrada,
-  registrarSaida
-} from "@/services/produtosService";
+import MovimentacaoDialog from "@/components/MovimentacaoDialog";
+import { registrarEntrada, registrarSaida } from "@/services/movimentacoesService";
+import { criarProduto, buscarProdutos } from "@/services/produtosService";
+import { formatarData, formatarMoeda, formatarQuantidade } from "@/utils/formatters";
+import { estoqueEstaBaixo } from "@/utils/produtos";
+import { validarMovimentacaoForm, validarProdutoForm } from "@/utils/validators";
 
 import styles from "./page.module.css";
 
@@ -32,11 +31,6 @@ const opcoesUnidade = [
   { label: "Kg", value: "kg" },
   { label: "Unidade", value: "un" },
   { label: "Caixa", value: "cx" }
-];
-
-const opcoesSubtipoSaida = [
-  { label: "Venda", value: "venda" },
-  { label: "Perda", value: "perda" }
 ];
 
 const formularioProdutoInicial = {
@@ -54,66 +48,6 @@ const formularioMovimentacaoInicial = {
   subtipo: "venda",
   observacao: ""
 };
-
-function formatarQuantidade(valor) {
-  return Number(valor ?? 0).toLocaleString("pt-BR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  });
-}
-
-function formatarMoeda(valor) {
-  return Number(valor ?? 0).toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  });
-}
-
-function formatarData(valor) {
-  if (!valor) {
-    return "-";
-  }
-
-  return new Date(`${valor}T00:00:00`).toLocaleDateString("pt-BR");
-}
-
-function estoqueEstaBaixo(produto) {
-  return Number(produto.quantidade_disponivel_venda ?? produto.quantidade_atual ?? 0) < Number(produto.estoque_minimo ?? 0);
-}
-
-function validarProdutoForm(formulario) {
-  if (!formulario.nome.trim()) {
-    return "Informe o nome do produto.";
-  }
-
-  if (formulario.estoque_minimo == null || Number(formulario.estoque_minimo) < 0) {
-    return "O estoque minimo deve ser zero ou maior.";
-  }
-
-  if (formulario.preco_venda_padrao == null || Number(formulario.preco_venda_padrao) < 0) {
-    return "Informe um preco de venda valido.";
-  }
-
-  if (formulario.validade_dias_padrao == null || Number(formulario.validade_dias_padrao) < 1) {
-    return "A validade padrao deve ser de pelo menos 1 dia.";
-  }
-
-  return null;
-}
-
-function validarMovimentacaoForm(formulario, tipo) {
-  if (formulario.quantidade == null || Number(formulario.quantidade) <= 0) {
-    return "Informe uma quantidade maior que zero.";
-  }
-
-  if (tipo === "entrada" && (formulario.custo_unitario == null || Number(formulario.custo_unitario) <= 0)) {
-    return "Informe um custo unitario maior que zero para a entrada.";
-  }
-
-  return null;
-}
 
 export default function PaginaEstoque() {
   const [produtos, setProdutos] = useState([]);
@@ -295,10 +229,10 @@ export default function PaginaEstoque() {
     };
   }
 
-  const renderizarRodapeDialogo = (formularioEnviado, rotuloBotao) => (
+  const renderizarRodapeDialogoProduto = () => (
     <div className={styles.dialogFooter}>
-      <Button label="Cancelar" type="button" text onClick={formularioEnviado === enviarFormularioProduto ? fecharModalProduto : fecharModalMovimentacao} />
-      <Button label={rotuloBotao} type="submit" loading={formularioEnviado === enviarFormularioProduto ? salvandoProduto : salvandoMovimentacao} />
+      <Button label="Cancelar" type="button" text onClick={fecharModalProduto} />
+      <Button label="Salvar Produto" type="submit" loading={salvandoProduto} />
     </div>
   );
 
@@ -475,93 +409,21 @@ export default function PaginaEstoque() {
             </div>
           </div>
 
-          {renderizarRodapeDialogo(enviarFormularioProduto, "Salvar Produto")}
+          {renderizarRodapeDialogoProduto()}
         </form>
       </Dialog>
 
-      <Dialog
+      <MovimentacaoDialog
         visible={modalEntrada || modalSaida}
-        header={modalEntrada ? "Registrar Entrada" : "Registrar Saida"}
-        style={{ width: "min(92vw, 640px)" }}
+        tipo={modalEntrada ? "entrada" : "saida"}
+        produtoLabel={produtoSelecionado ? `${produtoSelecionado.nome} (${produtoSelecionado.unidade_medida})` : ""}
+        formulario={formularioMovimentacao}
+        salvando={salvandoMovimentacao}
+        styles={styles}
+        onChange={setFormularioMovimentacao}
         onHide={fecharModalMovimentacao}
-      >
-        <form
-          className={styles.form}
-          onSubmit={(evento) => enviarFormularioMovimentacao(evento, modalEntrada ? "entrada" : "saida")}
-        >
-          <div className={styles.field}>
-            <label>Produto</label>
-            <InputText
-              value={produtoSelecionado ? `${produtoSelecionado.nome} (${produtoSelecionado.unidade_medida})` : ""}
-              disabled
-            />
-          </div>
-
-          <div className={styles.row}>
-            <div className={styles.field}>
-              <label htmlFor="movimentacao-quantidade">Quantidade</label>
-              <InputNumber
-                id="movimentacao-quantidade"
-                inputId="movimentacao-quantidade-input"
-                min={0}
-                minFractionDigits={0}
-                maxFractionDigits={3}
-                mode="decimal"
-                value={formularioMovimentacao.quantidade}
-                onValueChange={(evento) =>
-                  setFormularioMovimentacao((formularioAtual) => ({ ...formularioAtual, quantidade: evento.value }))
-                }
-                />
-              </div>
-
-            {modalEntrada ? (
-              <div className={styles.field}>
-                <label htmlFor="movimentacao-custo-unitario">Custo unitario</label>
-                <InputNumber
-                  id="movimentacao-custo-unitario"
-                  inputId="movimentacao-custo-unitario-input"
-                  min={0}
-                  minFractionDigits={2}
-                  maxFractionDigits={2}
-                  mode="decimal"
-                  value={formularioMovimentacao.custo_unitario}
-                  onValueChange={(evento) =>
-                    setFormularioMovimentacao((formularioAtual) => ({ ...formularioAtual, custo_unitario: evento.value }))
-                  }
-                />
-              </div>
-            ) : null}
-
-            {modalSaida ? (
-              <div className={styles.field}>
-                <label htmlFor="movimentacao-subtipo">Tipo da saida</label>
-                <Dropdown
-                  id="movimentacao-subtipo"
-                  value={formularioMovimentacao.subtipo}
-                  options={opcoesSubtipoSaida}
-                  onChange={(evento) =>
-                    setFormularioMovimentacao((formularioAtual) => ({ ...formularioAtual, subtipo: evento.value }))
-                  }
-                />
-              </div>
-            ) : null}
-          </div>
-
-          <div className={styles.field}>
-            <label htmlFor="movimentacao-observacao">Observacao</label>
-            <InputTextarea
-              id="movimentacao-observacao"
-              rows={4}
-              value={formularioMovimentacao.observacao}
-              onChange={(evento) =>
-                setFormularioMovimentacao((formularioAtual) => ({ ...formularioAtual, observacao: evento.target.value }))
-              }
-            />
-          </div>
-
-          {renderizarRodapeDialogo(enviarFormularioMovimentacao, modalEntrada ? "Salvar Entrada" : "Salvar Saida")}
-        </form>
-      </Dialog>
+        onSubmit={enviarFormularioMovimentacao}
+      />
     </section>
   );
 }
