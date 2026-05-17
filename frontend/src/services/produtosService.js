@@ -11,17 +11,47 @@ export function criarProduto(dadosProduto) {
   });
 }
 
+function obterUsuarioIdAutenticado() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const usuarioSalvo = localStorage.getItem("usuario");
+  if (!usuarioSalvo) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(usuarioSalvo)?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function incluirUsuarioAutenticado(dadosMovimentacao) {
+  const usuarioId = obterUsuarioIdAutenticado();
+
+  if (!usuarioId || dadosMovimentacao.usuario_id) {
+    return dadosMovimentacao;
+  }
+
+  return {
+    ...dadosMovimentacao,
+    usuario_id: usuarioId
+  };
+}
+
 export function registrarEntrada(dadosMovimentacao) {
   return requisitarApi("/movimentacoes/entrada", {
     method: "POST",
-    body: JSON.stringify(dadosMovimentacao)
+    body: JSON.stringify(incluirUsuarioAutenticado(dadosMovimentacao))
   });
 }
 
 export function registrarSaida(dadosMovimentacao) {
   return requisitarApi("/movimentacoes/saida", {
     method: "POST",
-    body: JSON.stringify(dadosMovimentacao)
+    body: JSON.stringify(incluirUsuarioAutenticado(dadosMovimentacao))
   });
 }
 
