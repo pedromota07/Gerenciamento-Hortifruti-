@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-import { usarAutenticacao } from "@/context/AuthContext";
+import { usarAutenticacao } from "@/context/ContextoAutenticacao";
 
 export function ProtecaoAutenticacao({ children }) {
   const { usuarioAutenticado, autenticacaoPronta } = usarAutenticacao();

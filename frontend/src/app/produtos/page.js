@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
-export default function ProdutosPage() {
+export default function PaginaProdutos() {
   redirect("/estoque");
 }

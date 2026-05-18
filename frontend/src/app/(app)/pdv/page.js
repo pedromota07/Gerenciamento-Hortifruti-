@@ -7,9 +7,10 @@ import { InputNumber } from "primereact/inputnumber";
 import { Message } from "primereact/message";
 import { Toast } from "primereact/toast";
 
-import { registrarSaida } from "@/services/movimentacoesService";
-import { buscarProdutos } from "@/services/produtosService";
-import { formatarMoeda, formatarQuantidade } from "@/utils/formatters";
+import EstadoVazio from "@/components/EstadoVazio";
+import { registrarSaida } from "@/services/servicoMovimentacoes";
+import { buscarProdutos } from "@/services/servicoProdutos";
+import { formatarMoeda, formatarQuantidadeComUnidade } from "@/utils/formatters";
 import { estoqueEstaBaixo } from "@/utils/produtos";
 
 import styles from "./page.module.css";
@@ -20,10 +21,10 @@ export default function PaginaPdv() {
   const [produtos, setProdutos] = useState([]);
   const [produtoId, setProdutoId] = useState(null);
   const [quantidade, setQuantidade] = useState(null);
-  const [etapa, setEtapa] = useState(1);
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [mensagem, setMensagem] = useState(null);
+  const [errosVenda, setErrosVenda] = useState({});
   const [ultimasVendas, setUltimasVendas] = useState([]);
   const [ultimaVendaConfirmada, setUltimaVendaConfirmada] = useState(null);
 
@@ -60,34 +61,39 @@ export default function PaginaPdv() {
     setProdutoId(valor);
     setQuantidade(null);
     setMensagem(null);
+    setErrosVenda((errosAtuais) => ({ ...errosAtuais, produto: null, quantidade: null }));
     setUltimaVendaConfirmada(null);
-    setEtapa(valor ? 2 : 1);
   }
 
-  function reiniciarFluxo() {
+  function limparVenda() {
     setProdutoId(null);
     setQuantidade(null);
     setMensagem(null);
+    setErrosVenda({});
     setUltimaVendaConfirmada(null);
-    setEtapa(1);
   }
 
   async function confirmarVenda() {
+    const novosErros = {};
+
     if (!produtoSelecionado) {
-      setMensagem({ severity: "error", text: "Selecione um produto para continuar." });
-      return;
+      novosErros.produto = "Selecione um produto.";
     }
 
     if (quantidade == null || Number(quantidade) <= 0) {
-      setMensagem({ severity: "error", text: "Informe uma quantidade maior que zero." });
-      return;
+      novosErros.quantidade = "Informe uma quantidade maior que zero.";
     }
 
-    if (Number(quantidade) > Number(produtoSelecionado.quantidade_disponivel_venda ?? produtoSelecionado.quantidade_atual)) {
-      setMensagem({
-        severity: "error",
-        text: "A quantidade informada excede o estoque disponivel para venda."
-      });
+    if (
+      produtoSelecionado &&
+      Number(quantidade) >
+        Number(produtoSelecionado.quantidade_disponivel_venda ?? produtoSelecionado.quantidade_atual)
+    ) {
+      novosErros.quantidade = "A quantidade excede o estoque disponível para venda.";
+    }
+
+    if (Object.keys(novosErros).length > 0) {
+      setErrosVenda(novosErros);
       return;
     }
 
@@ -114,6 +120,7 @@ export default function PaginaPdv() {
             produto_nome: produtoAtualizado.nome,
             quantidade: resposta.movimentacao.quantidade,
             saldo_disponivel: produtoAtualizado.quantidade_disponivel_venda,
+            unidade_medida: produtoAtualizado.unidade_medida,
             receita_total: resposta.movimentacao.receita_total,
             custo_total: resposta.movimentacao.custo_total,
             lucro_bruto: resposta.movimentacao.lucro_bruto
@@ -130,7 +137,7 @@ export default function PaginaPdv() {
       });
       setProdutoId(null);
       setQuantidade(null);
-      setEtapa(3);
+      setErrosVenda({});
       notificacaoRef.current?.show({
         severity: "success",
         summary: "Venda registrada",
@@ -139,6 +146,12 @@ export default function PaginaPdv() {
       });
     } catch (erro) {
       setMensagem({ severity: "error", text: erro.message });
+      notificacaoRef.current?.show({
+        severity: "error",
+        summary: "Falha na venda",
+        detail: erro.message,
+        life: 3200
+      });
     } finally {
       setSalvando(false);
     }
@@ -151,133 +164,130 @@ export default function PaginaPdv() {
       <header className={styles.header}>
         <div>
           <h1>PDV</h1>
-          <p>Fluxo rapido para registrar uma venda por vez, sem sair da tela.</p>
         </div>
       </header>
 
       {mensagem ? <Message severity={mensagem.severity} text={mensagem.text} /> : null}
 
-      <div className={styles.steps}>
-        <div className={`${styles.stepCard} ${etapa >= 1 ? styles.stepActive : ""}`}>
-          <span>1</span>
-          <strong>Selecionar Produto</strong>
-        </div>
-        <div className={`${styles.stepCard} ${etapa >= 2 ? styles.stepActive : ""}`}>
-          <span>2</span>
-          <strong>Informar Quantidade</strong>
-        </div>
-        <div className={`${styles.stepCard} ${etapa >= 3 ? styles.stepActive : ""}`}>
-          <span>3</span>
-          <strong>Confirmar Venda</strong>
-        </div>
-      </div>
-
       <div className={styles.grid}>
-        <div className={styles.panel}>
+        <div className={`${styles.panel} ${styles.salePanel}`}>
           <div className={styles.panelHeader}>
-            <h2>Fluxo de venda</h2>
-            <p>Selecione o produto, confira o saldo e confirme a venda.</p>
+            <h2>Venda rápida</h2>
           </div>
 
-          <div className={styles.field}>
-            <label htmlFor="pdv-produto">Produto</label>
-            <Dropdown
-              id="pdv-produto"
-              value={produtoId}
-              options={produtos.map((produto) => ({ label: produto.nome, value: produto.id }))}
-              onChange={(evento) => selecionarProduto(evento.value)}
-              placeholder={carregando ? "Carregando produtos..." : "Selecione um produto"}
-              filter
-              disabled={carregando}
-            />
+          <div className={styles.saleFields}>
+            <div className={styles.field}>
+              <label htmlFor="pdv-produto">Produto</label>
+              <Dropdown
+                id="pdv-produto"
+                className={errosVenda.produto ? "p-invalid" : ""}
+                value={produtoId}
+                options={produtos.map((produto) => ({ label: produto.nome, value: produto.id }))}
+                onChange={(evento) => selecionarProduto(evento.value)}
+                placeholder={carregando ? "Carregando produtos..." : "Selecione um produto"}
+                filter
+                disabled={carregando}
+              />
+              {errosVenda.produto ? <small className={styles.fieldError}>{errosVenda.produto}</small> : null}
+            </div>
+
+            <div className={styles.field}>
+              <label htmlFor="pdv-quantidade">Quantidade</label>
+              <InputNumber
+                id="pdv-quantidade"
+                inputId="pdv-quantidade-input"
+                inputClassName={errosVenda.quantidade ? "p-invalid" : ""}
+                min={0}
+                max={Number(produtoSelecionado?.quantidade_disponivel_venda ?? produtoSelecionado?.quantidade_atual ?? 0)}
+                minFractionDigits={0}
+                maxFractionDigits={3}
+                mode="decimal"
+                value={quantidade}
+                placeholder="0"
+                disabled={!produtoSelecionado}
+                onValueChange={(evento) => {
+                  setQuantidade(evento.value);
+                  setErrosVenda((errosAtuais) => ({ ...errosAtuais, quantidade: null }));
+                }}
+              />
+              {errosVenda.quantidade ? <small className={styles.fieldError}>{errosVenda.quantidade}</small> : null}
+            </div>
           </div>
 
           {produtoSelecionado ? (
-            <div className={styles.summary}>
+            <div className={styles.productMeta}>
               <strong>{produtoSelecionado.nome}</strong>
               <span>
-                Estoque disponivel para venda:{" "}
-                {formatarQuantidade(produtoSelecionado.quantidade_disponivel_venda ?? produtoSelecionado.quantidade_atual)}
+                Disponível para venda:{" "}
+                {formatarQuantidadeComUnidade(
+                  produtoSelecionado.quantidade_disponivel_venda ?? produtoSelecionado.quantidade_atual,
+                  produtoSelecionado.unidade_medida
+                )}
               </span>
-              <span>Estoque total: {formatarQuantidade(produtoSelecionado.quantidade_atual)}</span>
-              <span>Unidade: {produtoSelecionado.unidade_medida}</span>
-              <span>Preco unitario: {formatarMoeda(produtoSelecionado.preco_venda_padrao)}</span>
-              {estoqueEstaBaixo(produtoSelecionado) ? (
-                <Message severity="warn" text="Produto com estoque baixo." />
-              ) : null}
+              {estoqueEstaBaixo(produtoSelecionado) ? <Message severity="warn" text="Produto com estoque baixo." /> : null}
             </div>
           ) : null}
 
-          {etapa === 2 && produtoSelecionado ? (
-            <>
-              <div className={styles.field}>
-                <label htmlFor="pdv-quantidade">Quantidade</label>
-                <InputNumber
-                  id="pdv-quantidade"
-                  inputId="pdv-quantidade-input"
-                  min={0}
-                  max={Number(produtoSelecionado.quantidade_disponivel_venda ?? produtoSelecionado.quantidade_atual)}
-                  minFractionDigits={0}
-                  maxFractionDigits={3}
-                  mode="decimal"
-                  value={quantidade}
-                  onValueChange={(evento) => setQuantidade(evento.value)}
-                />
-              </div>
+          <div className={styles.checkoutSummary}>
+            <article className={styles.checkoutMetric}>
+              <span>Preço</span>
+              <strong>{produtoSelecionado ? formatarMoeda(precoUnitario) : "--"}</strong>
+            </article>
 
-              <div className={styles.preview}>
-                <span>Saldo apos venda</span>
-                <strong>{saldoResultante != null ? formatarQuantidade(saldoResultante) : "--"}</strong>
-              </div>
+            <article className={`${styles.checkoutMetric} ${styles.checkoutTotal}`}>
+              <span>Total</span>
+              <strong>{formatarMoeda(totalVenda)}</strong>
+            </article>
 
-              <div className={styles.preview}>
-                <span>Total da venda</span>
-                <strong>{formatarMoeda(totalVenda)}</strong>
-              </div>
+            <article className={styles.checkoutMetric}>
+              <span>Saldo após venda</span>
+              <strong>
+                {saldoResultante != null && produtoSelecionado
+                  ? formatarQuantidadeComUnidade(saldoResultante, produtoSelecionado.unidade_medida)
+                  : "--"}
+              </strong>
+            </article>
+          </div>
 
-              <div className={styles.actions}>
-                <Button label="Cancelar" text onClick={reiniciarFluxo} />
-                <Button
-                  label="Confirmar Venda"
-                  icon="pi pi-check"
-                  onClick={confirmarVenda}
-                  loading={salvando}
-                />
-              </div>
-            </>
-          ) : null}
+          <div className={styles.actions}>
+            <Button label="Limpar" text onClick={limparVenda} />
+            <Button
+              className={styles.confirmButton}
+              label="Confirmar venda"
+              icon="pi pi-check"
+              onClick={confirmarVenda}
+              loading={salvando}
+            />
+          </div>
 
-          {etapa === 3 ? (
+          {ultimaVendaConfirmada ? (
             <div className={styles.successBox}>
               <strong>Venda registrada</strong>
-              {ultimaVendaConfirmada ? (
-                <>
-                  <p>{`${ultimaVendaConfirmada.produto_nome} foi vendido e o PDV foi resetado para a proxima operacao.`}</p>
-                  <p>{`Receita: ${formatarMoeda(ultimaVendaConfirmada.receita_total)} | Custo: ${formatarMoeda(ultimaVendaConfirmada.custo_total)} | Lucro bruto: ${formatarMoeda(ultimaVendaConfirmada.lucro_bruto)}`}</p>
-                </>
-              ) : (
-                <p>O PDV foi resetado para a proxima operacao.</p>
-              )}
-              <Button label="Nova venda" onClick={reiniciarFluxo} />
+              <span>
+                {ultimaVendaConfirmada.produto_nome} vendido por {formatarMoeda(ultimaVendaConfirmada.receita_total)}.
+              </span>
             </div>
           ) : null}
         </div>
 
         <div className={styles.panel}>
           <div className={styles.panelHeader}>
-            <h2>Ultimas 5 vendas da sessao</h2>
-            <p>Acompanhe as vendas registradas durante o atendimento atual.</p>
+            <h2>Últimas 5 vendas da sessão</h2>
           </div>
 
           {ultimasVendas.length === 0 ? (
-            <p className={styles.empty}>Nenhuma venda registrada nesta sessao.</p>
+            <EstadoVazio
+              icone="pi pi-shopping-cart"
+              titulo="Nenhuma venda registrada nesta sessão."
+              descricao="As últimas vendas aparecerão aqui durante o atendimento."
+            />
           ) : (
             <div className={styles.salesList}>
               {ultimasVendas.map((venda) => (
                 <article className={styles.saleItem} key={venda.id}>
                   <strong>{venda.produto_nome}</strong>
-                  <span>Quantidade: {formatarQuantidade(venda.quantidade)}</span>
-                  <span>Saldo disponivel: {formatarQuantidade(venda.saldo_disponivel)}</span>
+                  <span>Quantidade: {formatarQuantidadeComUnidade(venda.quantidade, venda.unidade_medida)}</span>
+                  <span>Saldo disponível: {formatarQuantidadeComUnidade(venda.saldo_disponivel, venda.unidade_medida)}</span>
                   <span>Receita: {formatarMoeda(venda.receita_total)}</span>
                   <span>Lucro bruto: {formatarMoeda(venda.lucro_bruto)}</span>
                 </article>

@@ -12,47 +12,47 @@ const opcoesSubtipoSaida = [
   { label: "Perda", value: "perda" }
 ];
 
-export default function MovimentacaoDialog({
-  visible,
+export default function ModalMovimentacao({
+  visivel,
   tipo,
-  produtoLabel,
+  rotuloProduto,
   formulario,
   salvando,
-  styles,
-  idPrefix = "movimentacao",
-  onChange,
-  onHide,
-  onSubmit
+  estilos,
+  prefixoId = "movimentacao",
+  aoAlterar,
+  aoFechar,
+  aoEnviar
 }) {
   const entrada = tipo === "entrada";
-  const titulo = entrada ? "Registrar Entrada" : "Registrar Saida";
-  const rotuloSalvar = entrada ? "Salvar Entrada" : "Salvar Saida";
+  const titulo = entrada ? "Registrar Entrada" : "Registrar Saída";
+  const rotuloSalvar = entrada ? "Salvar Entrada" : "Salvar Saída";
 
   function atualizarCampo(campo, valor) {
-    onChange((formularioAtual) => ({ ...formularioAtual, [campo]: valor }));
+    aoAlterar((formularioAtual) => ({ ...formularioAtual, [campo]: valor }));
   }
 
   return (
     <Dialog
-      visible={visible}
+      visible={visivel}
       header={titulo}
       style={{ width: "min(92vw, 640px)" }}
-      onHide={onHide}
+      onHide={aoFechar}
     >
-      <form className={styles.form} onSubmit={(evento) => onSubmit(evento, tipo)}>
-        {produtoLabel ? (
-          <div className={styles.field}>
+      <form className={estilos.form} onSubmit={(evento) => aoEnviar(evento, tipo)}>
+        {rotuloProduto ? (
+          <div className={estilos.field}>
             <label>Produto</label>
-            <InputText value={produtoLabel} disabled />
+            <InputText value={rotuloProduto} disabled />
           </div>
         ) : null}
 
-        <div className={styles.row}>
-          <div className={styles.field}>
-            <label htmlFor={`${idPrefix}-quantidade`}>Quantidade</label>
+        <div className={estilos.row}>
+          <div className={estilos.field}>
+            <label htmlFor={`${prefixoId}-quantidade`}>Quantidade</label>
             <InputNumber
-              id={`${idPrefix}-quantidade`}
-              inputId={`${idPrefix}-quantidade-input`}
+              id={`${prefixoId}-quantidade`}
+              inputId={`${prefixoId}-quantidade-input`}
               min={0}
               minFractionDigits={0}
               maxFractionDigits={3}
@@ -63,26 +63,29 @@ export default function MovimentacaoDialog({
           </div>
 
           {entrada ? (
-            <div className={styles.field}>
-              <label htmlFor={`${idPrefix}-custo-unitario`}>Custo unitario</label>
+            <div className={estilos.field}>
+              <label htmlFor={`${prefixoId}-custo-unitario`}>Custo unitário</label>
               <InputNumber
-                id={`${idPrefix}-custo-unitario`}
-                inputId={`${idPrefix}-custo-unitario-input`}
+                id={`${prefixoId}-custo-unitario`}
+                inputId={`${prefixoId}-custo-unitario-input`}
                 min={0}
                 minFractionDigits={2}
                 maxFractionDigits={2}
-                mode="decimal"
+                mode="currency"
+                currency="BRL"
+                locale="pt-BR"
                 value={formulario.custo_unitario}
+                onFocus={(evento) => evento.target.select()}
                 onValueChange={(evento) => atualizarCampo("custo_unitario", evento.value)}
               />
             </div>
           ) : null}
 
           {!entrada ? (
-            <div className={styles.field}>
-              <label htmlFor={`${idPrefix}-subtipo`}>Tipo da saida</label>
+            <div className={estilos.field}>
+              <label htmlFor={`${prefixoId}-subtipo`}>Tipo da saída</label>
               <Dropdown
-                id={`${idPrefix}-subtipo`}
+                id={`${prefixoId}-subtipo`}
                 value={formulario.subtipo}
                 options={opcoesSubtipoSaida}
                 onChange={(evento) => atualizarCampo("subtipo", evento.value)}
@@ -91,18 +94,18 @@ export default function MovimentacaoDialog({
           ) : null}
         </div>
 
-        <div className={styles.field}>
-          <label htmlFor={`${idPrefix}-observacao`}>Observacao</label>
+        <div className={estilos.field}>
+          <label htmlFor={`${prefixoId}-observacao`}>Observação</label>
           <InputTextarea
-            id={`${idPrefix}-observacao`}
+            id={`${prefixoId}-observacao`}
             rows={4}
             value={formulario.observacao}
             onChange={(evento) => atualizarCampo("observacao", evento.target.value)}
           />
         </div>
 
-        <div className={styles.dialogFooter}>
-          <Button label="Cancelar" type="button" text onClick={onHide} />
+        <div className={estilos.dialogFooter}>
+          <Button label="Cancelar" type="button" text onClick={aoFechar} />
           <Button label={rotuloSalvar} type="submit" loading={salvando} />
         </div>
       </form>

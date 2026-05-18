@@ -1,5 +1,5 @@
 import "primeicons/primeicons.css";
-import { ProvedorAutenticacao } from "@/context/AuthContext";
+import { ProvedorAutenticacao } from "@/context/ContextoAutenticacao";
 import { PrimeReactProvider } from "primereact/api";
 import "primereact/resources/primereact.min.css";
 import "primereact/resources/themes/lara-light-teal/theme.css";

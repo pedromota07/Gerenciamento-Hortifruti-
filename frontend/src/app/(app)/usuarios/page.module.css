@@ -1,6 +1,6 @@
 .page {
   display: grid;
-  gap: 24px;
+  gap: 20px;
 }
 
 .header {
@@ -12,7 +12,8 @@
 
 .header h1 {
   margin: 0 0 8px;
-  font-size: clamp(2rem, 4vw, 3rem);
+  font-size: clamp(1.6rem, 2.4vw, 2.25rem);
+  line-height: 1.1;
 }
 
 .header p {
@@ -22,11 +23,23 @@
 }
 
 .panel {
-  padding: 24px;
+  padding: 18px;
   border: 1px solid var(--border);
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.82);
-  box-shadow: 0 18px 60px rgba(45, 106, 79, 0.08);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 250, 244, 0.98)),
+    var(--surface);
+  box-shadow: var(--shadow);
+  position: relative;
+  overflow: hidden;
+}
+
+.panel::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: var(--accent);
 }
 
 .panelHeader {
@@ -34,7 +47,7 @@
 }
 
 .panelHeader h2 {
-  margin: 0 0 8px;
+  margin: 0;
 }
 
 .panelHeader p {
@@ -61,6 +74,19 @@
   font-weight: 700;
 }
 
+.fieldError {
+  color: var(--tomato);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.field :global(.p-dropdown),
+.field :global(.p-inputtext),
+.field :global(.p-password),
+.field :global(.p-password-input) {
+  width: 100%;
+}
+
 .row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -82,8 +108,7 @@
 
 @media (max-width: 640px) {
   .panel {
-    padding: 18px;
-    border-radius: 20px;
+    padding: 14px;
   }
 
   .row {

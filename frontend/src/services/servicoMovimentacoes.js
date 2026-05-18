@@ -1,5 +1,5 @@
 import { requisitarApi } from "./api";
-import { obterUsuarioIdAutenticado } from "./authStorage";
+import { obterUsuarioIdAutenticado } from "./armazenamentoAutenticacao";
 
 function incluirUsuarioAutenticado(dadosMovimentacao) {
   const usuarioId = obterUsuarioIdAutenticado();

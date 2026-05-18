@@ -8,17 +8,18 @@ import { DataTable } from "primereact/datatable";
 import { Message } from "primereact/message";
 import { Tag } from "primereact/tag";
 
-import MovimentacaoDialog from "@/components/MovimentacaoDialog";
+import EstadoVazio from "@/components/EstadoVazio";
+import ModalMovimentacao from "@/components/ModalMovimentacao";
 import {
   buscarMovimentacoesPorProduto,
   registrarEntrada,
   registrarSaida
-} from "@/services/movimentacoesService";
+} from "@/services/servicoMovimentacoes";
 import {
   buscarCamadasPorProduto,
   buscarProdutoPorId
-} from "@/services/produtosService";
-import { formatarData, formatarMoeda, formatarQuantidade } from "@/utils/formatters";
+} from "@/services/servicoProdutos";
+import { formatarData, formatarMoeda, formatarQuantidadeComUnidade } from "@/utils/formatters";
 import { estoqueEstaBaixo } from "@/utils/produtos";
 import { validarMovimentacaoForm } from "@/utils/validators";
 
@@ -121,7 +122,7 @@ export default function PaginaDetalheProduto({ params }) {
       await carregarDetalhe();
       setMensagem({
         severity: "success",
-        text: tipo === "entrada" ? "Entrada registrada com sucesso." : "Saida registrada com sucesso."
+        text: tipo === "entrada" ? "Entrada registrada com sucesso." : "Saída registrada com sucesso."
       });
     } catch (erro) {
       setMensagem({ severity: "error", text: erro.message });
@@ -155,15 +156,25 @@ export default function PaginaDetalheProduto({ params }) {
 
         <div className={styles.stockCard}>
           <span>Quantidade em estoque</span>
-          <strong>{produto ? formatarQuantidade(produto.quantidade_atual) : "--"}</strong>
-          <small>Venda: {produto ? formatarQuantidade(produto.quantidade_disponivel_venda) : "--"}</small>
-          <small>Vencido: {produto ? formatarQuantidade(produto.quantidade_vencida) : "--"}</small>
+          <strong>
+            {produto ? formatarQuantidadeComUnidade(produto.quantidade_atual, produto.unidade_medida) : "--"}
+          </strong>
+          <small>
+            Venda:{" "}
+            {produto
+              ? formatarQuantidadeComUnidade(produto.quantidade_disponivel_venda, produto.unidade_medida)
+              : "--"}
+          </small>
+          <small>
+            Vencido:{" "}
+            {produto ? formatarQuantidadeComUnidade(produto.quantidade_vencida, produto.unidade_medida) : "--"}
+          </small>
         </div>
       </div>
 
       <div className={styles.metrics}>
         <article className={styles.metricCard}>
-          <span>Preco de venda</span>
+          <span>Preço de venda</span>
           <strong>{produto ? formatarMoeda(produto.preco_venda_padrao) : "--"}</strong>
         </article>
         <article className={styles.metricCard}>
@@ -171,11 +182,11 @@ export default function PaginaDetalheProduto({ params }) {
           <strong>{produto ? formatarMoeda(produto.valor_estoque_custo) : "--"}</strong>
         </article>
         <article className={styles.metricCard}>
-          <span>Valor em venda</span>
+          <span>Valor à venda</span>
           <strong>{produto ? formatarMoeda(produto.valor_estoque_venda) : "--"}</strong>
         </article>
         <article className={styles.metricCard}>
-          <span>Proxima validade</span>
+          <span>Próxima validade</span>
           <strong>{produto ? formatarData(produto.proxima_validade) : "--"}</strong>
           <small>{produto ? `${produto.validade_dias_padrao} dia(s) por entrada` : "--"}</small>
         </article>
@@ -184,7 +195,7 @@ export default function PaginaDetalheProduto({ params }) {
       <div className={styles.actions}>
         <Button label="Registrar Entrada" icon="pi pi-plus" onClick={() => abrirMovimentacao("entrada")} />
         <Button
-          label="Registrar Saida"
+          label="Registrar Saída"
           icon="pi pi-minus"
           severity="warning"
           onClick={() => abrirMovimentacao("saida")}
@@ -194,66 +205,72 @@ export default function PaginaDetalheProduto({ params }) {
       <div className={styles.panel}>
         <div className={styles.panelHeader}>
           <h2>Camadas abertas</h2>
-          <p>Ordem FEFO por validade, mostrando o que ainda pode ser consumido do produto.</p>
         </div>
 
-        <DataTable
-          value={camadas}
-          dataKey="id"
-          loading={carregando}
-          emptyMessage="Nenhuma camada aberta encontrada para este produto."
-          responsiveLayout="scroll"
-        >
-          <Column field="data_entrada" header="Entrada" body={(linha) => formatarData(linha.data_entrada)} />
-          <Column field="data_validade" header="Validade" body={(linha) => formatarData(linha.data_validade)} />
-          <Column
-            field="quantidade_disponivel"
-            header="Disponivel"
-            body={(linha) => formatarQuantidade(linha.quantidade_disponivel)}
+        {camadas.length === 0 && !carregando ? (
+          <EstadoVazio
+            icone="pi pi-box"
+            titulo="Este produto ainda não tem lotes disponíveis."
+            descricao="Registre uma entrada para começar o acompanhamento por validade."
           />
-          <Column
-            field="custo_unitario"
-            header="Custo Unit."
-            body={(linha) => formatarMoeda(linha.custo_unitario)}
-          />
-        </DataTable>
+        ) : (
+          <DataTable value={camadas} dataKey="id" loading={carregando} responsiveLayout="scroll">
+            <Column field="data_entrada" header="Entrada" body={(linha) => formatarData(linha.data_entrada)} />
+            <Column field="data_validade" header="Validade" body={(linha) => formatarData(linha.data_validade)} />
+            <Column
+              field="quantidade_disponivel"
+              header="Disponível"
+              body={(linha) => formatarQuantidadeComUnidade(linha.quantidade_disponivel, produto?.unidade_medida)}
+            />
+            <Column
+              field="custo_unitario"
+              header="Custo Unit."
+              body={(linha) => formatarMoeda(linha.custo_unitario)}
+            />
+          </DataTable>
+        )}
       </div>
 
       <div className={styles.panel}>
         <div className={styles.panelHeader}>
-          <h2>Historico de movimentacoes</h2>
-          <p>Ultimas movimentacoes do item, do registro mais recente para o mais antigo.</p>
+          <h2>Histórico de movimentações</h2>
         </div>
 
-        <DataTable
-          value={movimentacoes}
-          dataKey="id"
-          loading={carregando}
-          emptyMessage="Nenhuma movimentacao encontrada para este produto."
-          responsiveLayout="scroll"
-        >
-          <Column field="data" header="Data" body={(linha) => formatarData(linha.data)} />
-          <Column field="tipo" header="Tipo" />
-          <Column field="subtipo" header="Subtipo" body={(linha) => linha.subtipo ?? "-"} />
-          <Column field="quantidade" header="Quantidade" body={(linha) => formatarQuantidade(linha.quantidade)} />
-          <Column field="custo_total" header="Custo" body={(linha) => formatarMoeda(linha.custo_total, { exibirVazio: true })} />
-          <Column field="receita_total" header="Receita" body={(linha) => formatarMoeda(linha.receita_total, { exibirVazio: true })} />
-          <Column field="lucro_bruto" header="Lucro Bruto" body={(linha) => formatarMoeda(linha.lucro_bruto, { exibirVazio: true })} />
-          <Column field="usuario_nome" header="Responsavel" body={(linha) => linha.usuario_nome ?? "-"} />
-          <Column field="observacao" header="Observacao" body={(linha) => linha.observacao ?? "-"} />
-        </DataTable>
+        {movimentacoes.length === 0 && !carregando ? (
+          <EstadoVazio
+            icone="pi pi-sync"
+            titulo="Nenhuma movimentação registrada neste produto."
+            descricao="Entradas, vendas e perdas aparecerão aqui conforme o item for movimentado."
+          />
+        ) : (
+          <DataTable value={movimentacoes} dataKey="id" loading={carregando} responsiveLayout="scroll">
+            <Column field="data" header="Data" body={(linha) => formatarData(linha.data)} />
+            <Column field="tipo" header="Tipo" />
+            <Column field="subtipo" header="Subtipo" body={(linha) => linha.subtipo ?? "-"} />
+            <Column
+              field="quantidade"
+              header="Quantidade"
+              body={(linha) => formatarQuantidadeComUnidade(linha.quantidade, produto?.unidade_medida)}
+            />
+            <Column field="custo_total" header="Custo" body={(linha) => formatarMoeda(linha.custo_total, { exibirVazio: true })} />
+            <Column field="receita_total" header="Receita" body={(linha) => formatarMoeda(linha.receita_total, { exibirVazio: true })} />
+            <Column field="lucro_bruto" header="Lucro Bruto" body={(linha) => formatarMoeda(linha.lucro_bruto, { exibirVazio: true })} />
+            <Column field="usuario_nome" header="Responsável" body={(linha) => linha.usuario_nome ?? "-"} />
+            <Column field="observacao" header="Observação" body={(linha) => linha.observacao ?? "-"} />
+          </DataTable>
+        )}
       </div>
 
-      <MovimentacaoDialog
-        visible={modalEntrada || modalSaida}
+      <ModalMovimentacao
+        visivel={modalEntrada || modalSaida}
         tipo={modalEntrada ? "entrada" : "saida"}
         formulario={formularioMovimentacao}
         salvando={salvandoMovimentacao}
-        styles={styles}
-        idPrefix="detalhe"
-        onChange={setFormularioMovimentacao}
-        onHide={fecharMovimentacao}
-        onSubmit={enviarFormularioMovimentacao}
+        estilos={styles}
+        prefixoId="detalhe"
+        aoAlterar={setFormularioMovimentacao}
+        aoFechar={fecharMovimentacao}
+        aoEnviar={enviarFormularioMovimentacao}
       />
     </section>
   );

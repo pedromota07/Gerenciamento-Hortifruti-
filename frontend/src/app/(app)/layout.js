@@ -1,5 +1,5 @@
-import { ProtecaoAutenticacao } from "@/components/AuthGuard";
-import BarraLateral from "@/components/Sidebar";
+import { ProtecaoAutenticacao } from "@/components/ProtecaoAutenticacao";
+import BarraLateral from "@/components/BarraLateral";
 
 export default function LayoutAplicacao({ children }) {
   return (

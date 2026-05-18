@@ -7,13 +7,13 @@ import { InputText } from "primereact/inputtext";
 import { Message } from "primereact/message";
 import { Password } from "primereact/password";
 
-import { usarAutenticacao } from "@/context/AuthContext";
+import { usarAutenticacao } from "@/context/ContextoAutenticacao";
 
 import styles from "./page.module.css";
 
 export default function PaginaLogin() {
   const roteador = useRouter();
-  const { usuarioAutenticado, entrar } = usarAutenticacao();
+  const { usuarioAutenticado, autenticacaoPronta, entrar } = usarAutenticacao();
 
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
@@ -21,10 +21,10 @@ export default function PaginaLogin() {
   const [mensagem, setMensagem] = useState(null);
 
   useEffect(() => {
-    if (usuarioAutenticado) {
+    if (autenticacaoPronta && usuarioAutenticado) {
       roteador.replace("/dashboard");
     }
-  }, [roteador, usuarioAutenticado]);
+  }, [autenticacaoPronta, roteador, usuarioAutenticado]);
 
   async function enviarFormulario(evento) {
     evento.preventDefault();
@@ -39,7 +39,6 @@ export default function PaginaLogin() {
 
     try {
       await entrar(email.trim().toLowerCase(), senha);
-      roteador.replace("/dashboard");
     } catch (erro) {
       setMensagem({ severity: "error", text: erro.message });
     } finally {

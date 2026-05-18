@@ -3,22 +3,27 @@
   display: grid;
   place-items: center;
   padding: 24px;
+  background:
+    linear-gradient(135deg, rgba(23, 59, 42, 0.92), rgba(47, 125, 87, 0.86)),
+    var(--bg);
 }
 
 .form {
   width: min(100%, 420px);
   display: grid;
   gap: 18px;
-  padding: 32px;
+  padding: 28px;
   border: 1px solid var(--border);
-  border-radius: 28px;
-  background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 24px 80px rgba(45, 106, 79, 0.08);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #ffffff, #f6faf3);
+  box-shadow: var(--shadow);
+  border-top: 5px solid var(--accent);
 }
 
 .header h1 {
   margin: 0 0 8px;
-  font-size: clamp(2rem, 4vw, 3rem);
+  font-size: clamp(1.65rem, 2.8vw, 2.25rem);
+  line-height: 1.1;
 }
 
 .header p {

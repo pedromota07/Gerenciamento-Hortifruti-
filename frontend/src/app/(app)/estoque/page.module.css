@@ -1,6 +1,6 @@
 .page {
   display: grid;
-  gap: 24px;
+  gap: 20px;
 }
 
 .header {
@@ -12,7 +12,8 @@
 
 .header h1 {
   margin: 0 0 8px;
-  font-size: clamp(2rem, 4vw, 3rem);
+  font-size: clamp(1.6rem, 2.4vw, 2.25rem);
+  line-height: 1.1;
 }
 
 .header p {
@@ -22,11 +23,23 @@
 }
 
 .panel {
-  padding: 24px;
+  padding: 18px;
   border: 1px solid var(--border);
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.82);
-  box-shadow: 0 18px 60px rgba(45, 106, 79, 0.08);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 250, 244, 0.98)),
+    var(--surface);
+  box-shadow: var(--shadow);
+  position: relative;
+  overflow: hidden;
+}
+
+.panel::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: var(--accent);
 }
 
 .toolbar {
@@ -38,7 +51,8 @@
 }
 
 .toolbarTitle h2 {
-  margin: 0 0 8px;
+  margin: 0;
+  font-size: 1.15rem;
 }
 
 .toolbarTitle p {
@@ -46,8 +60,37 @@
   color: var(--muted);
 }
 
+.filters {
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .searchBox {
-  min-width: 280px;
+  position: relative;
+  flex: 0 1 280px;
+  width: min(100%, 280px);
+}
+
+.searchBox :global(.pi) {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  z-index: 1;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.searchBox :global(.p-inputtext) {
+  width: 100%;
+  padding-left: 2.5rem;
+}
+
+.filterSelect {
+  width: min(100%, 210px);
 }
 
 .form {
@@ -65,6 +108,18 @@
   font-weight: 700;
 }
 
+.fieldError {
+  color: var(--tomato);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.field :global(.p-dropdown),
+.field :global(.p-inputnumber),
+.field :global(.p-inputtext) {
+  width: 100%;
+}
+
 .row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -75,22 +130,66 @@
   margin-bottom: 18px;
 }
 
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.summaryItem {
+  display: grid;
+  gap: 6px;
+  min-height: 82px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.summaryItem span {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.summaryItem strong {
+  font-size: 1.5rem;
+  line-height: 1.1;
+}
+
+.summaryDanger {
+  border-left-color: var(--tomato);
+  background: linear-gradient(180deg, #ffffff, #fff7f7);
+}
+
+.summaryWarning {
+  border-left-color: var(--harvest);
+  background: linear-gradient(180deg, #ffffff, #fffaf1);
+}
+
 .actions {
   display: flex;
+  justify-content: flex-end;
   gap: 8px;
   flex-wrap: wrap;
+  min-width: 220px;
 }
 
 .quantityCell {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   font-weight: 600;
+  flex-wrap: wrap;
 }
 
 .quantityStack {
   display: grid;
   gap: 4px;
+  padding-left: 10px;
+  border-left: 4px solid var(--accent-soft);
 }
 
 .quantityStack span,
@@ -98,8 +197,28 @@
   line-height: 1.2;
 }
 
+.statusTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 180px;
+}
+
 .lowStockRow {
-  background: rgba(248, 180, 180, 0.12);
+  background: var(--danger-soft);
+}
+
+.expiringRow {
+  box-shadow: inset 4px 0 0 var(--harvest);
+}
+
+.expiredRow {
+  box-shadow: inset 4px 0 0 var(--tomato);
+}
+
+.inactiveRow {
+  color: var(--muted);
+  background: #f4f6f3;
 }
 
 .dialogFooter {
@@ -115,18 +234,39 @@
     align-items: stretch;
   }
 
+  .filters {
+    justify-content: stretch;
+  }
+
   .searchBox {
-    min-width: 0;
+    flex-basis: auto;
+    width: 100%;
+  }
+
+  .filterSelect {
+    width: 100%;
+  }
+
+  .summaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 640px) {
   .panel {
-    padding: 18px;
-    border-radius: 20px;
+    padding: 14px;
+  }
+
+  .summaryGrid {
+    grid-template-columns: 1fr;
   }
 
   .row {
     grid-template-columns: 1fr;
+  }
+
+  .actions {
+    justify-content: flex-start;
+    min-width: 0;
   }
 }

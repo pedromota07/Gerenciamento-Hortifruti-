@@ -1,25 +1,30 @@
 .page {
   display: grid;
-  gap: 24px;
+  gap: 20px;
 }
 
 .header h1 {
   margin: 0 0 8px;
-  font-size: clamp(2rem, 4vw, 3rem);
-}
-
-.header p {
-  margin: 0;
-  color: var(--muted);
-  line-height: 1.5;
+  font-size: clamp(1.6rem, 2.4vw, 2.25rem);
+  line-height: 1.1;
 }
 
 .panel {
-  padding: 24px;
+  padding: 18px;
   border: 1px solid var(--border);
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.82);
-  box-shadow: 0 18px 60px rgba(45, 106, 79, 0.08);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: var(--shadow);
+  position: relative;
+  overflow: hidden;
+}
+
+.panel::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: var(--accent);
 }
 
 .panelHeader {
@@ -31,28 +36,25 @@
 }
 
 .panelHeader h2 {
-  margin: 0 0 8px;
-}
-
-.panelHeader p {
   margin: 0;
-  color: var(--muted);
+  font-size: 1.08rem;
 }
 
 .actions {
   display: flex;
-  gap: 12px;
+  gap: 10px;
 }
 
 .filterGrid,
 .metrics,
+.insightsGrid,
 .tablesGrid {
   display: grid;
   gap: 16px;
 }
 
 .filterGrid {
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
 }
 
 .filterField {
@@ -65,38 +67,140 @@
   font-weight: 700;
 }
 
+.filterField :global(.p-dropdown),
+.filterField :global(.p-inputnumber),
+.filterField :global(.p-inputtext) {
+  width: 100%;
+}
+
 .metrics {
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
 .metricCard {
   display: grid;
   gap: 10px;
-  padding: 20px;
+  min-height: 108px;
+  padding: 16px;
   border: 1px solid var(--border);
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.82);
-  box-shadow: 0 18px 60px rgba(45, 106, 79, 0.08);
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+  background: #ffffff;
 }
 
 .metricCard span {
   color: var(--muted);
+  font-weight: 700;
 }
 
 .metricCard strong {
-  font-size: 1.65rem;
+  color: var(--accent-strong);
+  font-size: clamp(1.05rem, 1.7vw, 1.45rem);
   line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.insightsGrid {
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+}
+
+.chart {
+  display: grid;
+  gap: 14px;
+}
+
+.chartRow {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.chartRow span {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.chartRow strong {
+  min-width: 96px;
+  text-align: right;
+}
+
+.chartTrack {
+  height: 12px;
+  border-radius: 999px;
+  background: #edf1ee;
+  overflow: hidden;
+}
+
+.chartBar {
+  height: 100%;
+  min-width: 4px;
+  border-radius: inherit;
+}
+
+.chartBar_receita,
+.chartBar_lucro {
+  background: var(--accent);
+}
+
+.chartBar_custo {
+  background: #7c8b80;
+}
+
+.chartBar_perda {
+  background: var(--tomato);
+}
+
+.validitySummary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.validitySummary article {
+  display: grid;
+  gap: 6px;
+  min-height: 82px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.validitySummary span {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.validitySummary strong {
+  font-size: 1.25rem;
 }
 
 .tablesGrid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin-top: 20px;
+}
+
+@media (max-width: 1100px) {
+  .metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 960px) {
+  .insightsGrid,
+  .tablesGrid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 640px) {
+  .page {
+    gap: 16px;
+  }
+
   .panel {
-    padding: 18px;
-    border-radius: 20px;
+    padding: 14px;
   }
 
   .panelHeader,
@@ -104,10 +208,18 @@
     flex-direction: column;
     align-items: stretch;
   }
-}
 
-@media (max-width: 960px) {
-  .tablesGrid {
+  .metrics,
+  .validitySummary {
     grid-template-columns: 1fr;
+  }
+
+  .chartRow {
+    grid-template-columns: 1fr;
+  }
+
+  .chartRow strong {
+    min-width: 0;
+    text-align: left;
   }
 }
