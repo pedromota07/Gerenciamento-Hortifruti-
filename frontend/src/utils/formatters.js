@@ -1,8 +1,21 @@
 export function formatarQuantidade(valor) {
   return Number(valor ?? 0).toLocaleString("pt-BR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 3
   });
+}
+
+const rotulosUnidade = {
+  kg: "kg",
+  un: "un",
+  cx: "cx"
+};
+
+export function formatarQuantidadeComUnidade(valor, unidadeMedida) {
+  const unidade = rotulosUnidade[unidadeMedida] ?? unidadeMedida ?? "";
+  const quantidade = formatarQuantidade(valor);
+
+  return unidade ? `${quantidade} ${unidade}` : quantidade;
 }
 
 export function formatarMoeda(valor, opcoes = {}) {
@@ -10,12 +23,12 @@ export function formatarMoeda(valor, opcoes = {}) {
     return "-";
   }
 
-  return Number(valor ?? 0).toLocaleString("pt-BR", {
+  return new Intl.NumberFormat("pt-BR", {
     style: "currency",
     currency: "BRL",
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
-  });
+  }).format(Number(valor ?? 0));
 }
 
 export function formatarData(valor) {

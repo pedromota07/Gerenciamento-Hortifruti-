@@ -5,14 +5,14 @@ import { usePathname, useRouter } from "next/navigation";
 import { Button } from "primereact/button";
 import { Menu } from "primereact/menu";
 
-import { usarAutenticacao } from "@/context/AuthContext";
+import { usarAutenticacao } from "@/context/ContextoAutenticacao";
 
 const itensNavegacao = [
-  { label: "Dashboard", href: "/dashboard", icon: "pi pi-home" },
-  { label: "Estoque", href: "/estoque", icon: "pi pi-box" },
-  { label: "PDV", href: "/pdv", icon: "pi pi-shopping-cart" },
-  { label: "Relatorios", href: "/relatorios", icon: "pi pi-chart-bar" },
-  { label: "Usuarios", href: "/usuarios", icon: "pi pi-users" }
+  { rotulo: "Painel", destino: "/dashboard", icone: "pi pi-home" },
+  { rotulo: "Estoque", destino: "/estoque", icone: "pi pi-box" },
+  { rotulo: "PDV", destino: "/pdv", icone: "pi pi-shopping-cart" },
+  { rotulo: "Relatórios", destino: "/relatorios", icone: "pi pi-chart-bar" },
+  { rotulo: "Usuários", destino: "/usuarios", icone: "pi pi-users" }
 ];
 
 function itemEstaAtivo(caminhoAtual, destino) {
@@ -29,17 +29,17 @@ export default function BarraLateral() {
   const { sair, usuario } = usarAutenticacao();
   const itensVisiveis = usuario?.perfil === "gerente"
     ? itensNavegacao
-    : itensNavegacao.filter((itemNavegacao) => itemNavegacao.href !== "/usuarios");
+    : itensNavegacao.filter((itemNavegacao) => itemNavegacao.destino !== "/usuarios");
 
   const modeloMenu = itensVisiveis.map((itemNavegacao) => ({
-    label: itemNavegacao.label,
+    label: itemNavegacao.rotulo,
     template: () => (
       <Link
-        className={`sidebar-link${itemEstaAtivo(caminhoAtual, itemNavegacao.href) ? " is-active" : ""}`}
-        href={itemNavegacao.href}
+        className={`sidebar-link${itemEstaAtivo(caminhoAtual, itemNavegacao.destino) ? " is-active" : ""}`}
+        href={itemNavegacao.destino}
       >
-        <i className={itemNavegacao.icon} />
-        <span>{itemNavegacao.label}</span>
+        <i className={itemNavegacao.icone} />
+        <span>{itemNavegacao.rotulo}</span>
       </Link>
     )
   }));

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Button } from "primereact/button";
 import { Column } from "primereact/column";
@@ -11,13 +11,19 @@ import { InputNumber } from "primereact/inputnumber";
 import { InputText } from "primereact/inputtext";
 import { Message } from "primereact/message";
 import { Tag } from "primereact/tag";
+import { Toast } from "primereact/toast";
 
-import MovimentacaoDialog from "@/components/MovimentacaoDialog";
-import { registrarEntrada, registrarSaida } from "@/services/movimentacoesService";
-import { criarProduto, buscarProdutos } from "@/services/produtosService";
-import { formatarData, formatarMoeda, formatarQuantidade } from "@/utils/formatters";
-import { estoqueEstaBaixo } from "@/utils/produtos";
-import { validarMovimentacaoForm, validarProdutoForm } from "@/utils/validators";
+import EstadoVazio from "@/components/EstadoVazio";
+import ModalMovimentacao from "@/components/ModalMovimentacao";
+import { registrarEntrada, registrarSaida } from "@/services/servicoMovimentacoes";
+import { criarProduto, buscarProdutos } from "@/services/servicoProdutos";
+import { formatarData, formatarQuantidadeComUnidade } from "@/utils/formatters";
+import {
+  estoqueEstaBaixo,
+  produtoProximoDoVencimento,
+  produtoTemEstoqueVencido
+} from "@/utils/produtos";
+import { obterErrosProdutoForm, validarMovimentacaoForm } from "@/utils/validators";
 
 import styles from "./page.module.css";
 
@@ -33,10 +39,24 @@ const opcoesUnidade = [
   { label: "Caixa", value: "cx" }
 ];
 
+const opcoesFiltroCategoria = [
+  { label: "Todas as categorias", value: null },
+  ...opcoesCategoria
+];
+
+const opcoesFiltroStatus = [
+  { label: "Todos os status", value: null },
+  { label: "Regular", value: "regular" },
+  { label: "Estoque baixo", value: "estoque_baixo" },
+  { label: "Produto vencido", value: "vencido" },
+  { label: "Próximo do vencimento", value: "proximo_vencimento" },
+  { label: "Inativo", value: "inativo" }
+];
+
 const formularioProdutoInicial = {
   nome: "",
-  categoria: "fruta",
-  unidade_medida: "kg",
+  categoria: null,
+  unidade_medida: null,
   estoque_minimo: 0,
   preco_venda_padrao: 0,
   validade_dias_padrao: 1
@@ -50,9 +70,12 @@ const formularioMovimentacaoInicial = {
 };
 
 export default function PaginaEstoque() {
+  const notificacaoRef = useRef(null);
   const [produtos, setProdutos] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [filtroGlobal, setFiltroGlobal] = useState("");
+  const [filtroCategoria, setFiltroCategoria] = useState(null);
+  const [filtroStatus, setFiltroStatus] = useState(null);
   const [mensagem, setMensagem] = useState(null);
   const [modalProduto, setModalProduto] = useState(false);
   const [modalEntrada, setModalEntrada] = useState(false);
@@ -60,6 +83,7 @@ export default function PaginaEstoque() {
   const [produtoSelecionado, setProdutoSelecionado] = useState(null);
   const [formularioProduto, setFormularioProduto] = useState(formularioProdutoInicial);
   const [formularioMovimentacao, setFormularioMovimentacao] = useState(formularioMovimentacaoInicial);
+  const [errosProduto, setErrosProduto] = useState({});
   const [salvandoProduto, setSalvandoProduto] = useState(false);
   const [salvandoMovimentacao, setSalvandoMovimentacao] = useState(false);
 
@@ -73,6 +97,12 @@ export default function PaginaEstoque() {
       setProdutos(dadosProdutos);
     } catch (erro) {
       setMensagem({ severity: "error", text: erro.message });
+      notificacaoRef.current?.show({
+        severity: "error",
+        summary: "Falha ao cadastrar",
+        detail: erro.message,
+        life: 3200
+      });
     } finally {
       if (!opcoes.silencioso) {
         setCarregando(false);
@@ -100,6 +130,7 @@ export default function PaginaEstoque() {
   function fecharModalProduto() {
     setModalProduto(false);
     setFormularioProduto(formularioProdutoInicial);
+    setErrosProduto({});
   }
 
   function fecharModalMovimentacao() {
@@ -111,10 +142,10 @@ export default function PaginaEstoque() {
 
   async function enviarFormularioProduto(evento) {
     evento.preventDefault();
-    const mensagemValidacao = validarProdutoForm(formularioProduto);
+    const novosErros = obterErrosProdutoForm(formularioProduto);
 
-    if (mensagemValidacao) {
-      setMensagem({ severity: "error", text: mensagemValidacao });
+    if (Object.keys(novosErros).length > 0) {
+      setErrosProduto(novosErros);
       return;
     }
 
@@ -132,8 +163,20 @@ export default function PaginaEstoque() {
       fecharModalProduto();
       await carregarProdutos({ silencioso: true });
       setMensagem({ severity: "success", text: "Produto cadastrado com sucesso." });
+      notificacaoRef.current?.show({
+        severity: "success",
+        summary: "Produto cadastrado",
+        detail: "O item já está disponível para controle de estoque.",
+        life: 2600
+      });
     } catch (erro) {
       setMensagem({ severity: "error", text: erro.message });
+      notificacaoRef.current?.show({
+        severity: "error",
+        summary: "Falha na movimentação",
+        detail: erro.message,
+        life: 3200
+      });
     } finally {
       setSalvandoProduto(false);
     }
@@ -172,7 +215,13 @@ export default function PaginaEstoque() {
       await carregarProdutos({ silencioso: true });
       setMensagem({
         severity: "success",
-        text: tipo === "entrada" ? "Entrada registrada com sucesso." : "Saida registrada com sucesso."
+        text: tipo === "entrada" ? "Entrada registrada com sucesso." : "Saída registrada com sucesso."
+      });
+      notificacaoRef.current?.show({
+        severity: "success",
+        summary: tipo === "entrada" ? "Entrada registrada" : "Saída registrada",
+        detail: `${produtoSelecionado.nome} atualizado com sucesso.`,
+        life: 2600
       });
     } catch (erro) {
       setMensagem({ severity: "error", text: erro.message });
@@ -181,23 +230,103 @@ export default function PaginaEstoque() {
     }
   }
 
-  const produtosAtivos = useMemo(() => produtos.filter((produto) => produto.ativo), [produtos]);
+  const produtosComEstoqueBaixo = useMemo(
+    () => produtos.filter((produto) => estoqueEstaBaixo(produto)),
+    [produtos]
+  );
+  const produtosVencidos = useMemo(
+    () => produtos.filter((produto) => produtoTemEstoqueVencido(produto)),
+    [produtos]
+  );
+  const produtosProximosVencimento = useMemo(
+    () => produtos.filter((produto) => produtoProximoDoVencimento(produto)),
+    [produtos]
+  );
+  const produtosInativos = useMemo(
+    () => produtos.filter((produto) => !produto.ativo),
+    [produtos]
+  );
 
-  function renderizarQuantidade(produto) {
-    const estoqueBaixo = estoqueEstaBaixo(produto);
-    const possuiVencido = Number(produto.quantidade_vencida ?? 0) > 0;
+  const produtosFiltrados = useMemo(
+    () =>
+      produtos.filter((produto) => {
+        const categoriaCorresponde = !filtroCategoria || produto.categoria === filtroCategoria;
+        const statusCorresponde = !filtroStatus || produtoPossuiStatus(produto, filtroStatus);
+
+        return categoriaCorresponde && statusCorresponde;
+      }),
+    [filtroCategoria, filtroStatus, produtos]
+  );
+
+  function produtoPossuiStatus(produto, status) {
+    if (status === "inativo") {
+      return !produto.ativo;
+    }
+
+    if (status === "vencido") {
+      return produtoTemEstoqueVencido(produto);
+    }
+
+    if (status === "proximo_vencimento") {
+      return produtoProximoDoVencimento(produto);
+    }
+
+    if (status === "estoque_baixo") {
+      return estoqueEstaBaixo(produto);
+    }
+
+    if (status === "regular") {
+      return (
+        produto.ativo &&
+        !produtoTemEstoqueVencido(produto) &&
+        !produtoProximoDoVencimento(produto) &&
+        !estoqueEstaBaixo(produto)
+      );
+    }
+
+    return true;
+  }
+
+  function renderizarSaldo(produto) {
+    const possuiVencido = produtoTemEstoqueVencido(produto);
 
     return (
       <div className={styles.quantityCell}>
         <div className={styles.quantityStack}>
-          <strong>Total: {formatarQuantidade(produto.quantidade_atual)}</strong>
-          <span>Venda: {formatarQuantidade(produto.quantidade_disponivel_venda)}</span>
-          {possuiVencido ? <span>Vencido: {formatarQuantidade(produto.quantidade_vencida)}</span> : null}
+          <strong>Total: {formatarQuantidadeComUnidade(produto.quantidade_atual, produto.unidade_medida)}</strong>
+          <span>Venda: {formatarQuantidadeComUnidade(produto.quantidade_disponivel_venda, produto.unidade_medida)}</span>
+          {possuiVencido ? (
+            <span>Vencido: {formatarQuantidadeComUnidade(produto.quantidade_vencida, produto.unidade_medida)}</span>
+          ) : null}
         </div>
-        {estoqueBaixo ? <Tag severity="danger" value="Abaixo do minimo" /> : null}
-        {possuiVencido ? <Tag severity="warning" value="Com vencidos" /> : null}
       </div>
     );
+  }
+
+  function renderizarStatus(produto) {
+    const status = [];
+
+    if (!produto.ativo) {
+      status.push(<Tag key="inativo" severity="secondary" value="Inativo" />);
+    }
+
+    if (produtoTemEstoqueVencido(produto)) {
+      status.push(<Tag key="vencido" severity="danger" value="Produto vencido" />);
+    }
+
+    if (produtoProximoDoVencimento(produto)) {
+      status.push(<Tag key="proximo" severity="warning" value="Próximo do vencimento" />);
+    }
+
+    if (estoqueEstaBaixo(produto)) {
+      status.push(<Tag key="baixo" severity="danger" value="Estoque baixo" />);
+    }
+
+    if (status.length === 0) {
+      status.push(<Tag key="regular" severity="success" value="Regular" />);
+    }
+
+    return <div className={styles.statusTags}>{status}</div>;
   }
 
   function renderizarAcoes(produto) {
@@ -207,13 +336,15 @@ export default function PaginaEstoque() {
           label="Entrada"
           icon="pi pi-plus"
           size="small"
+          disabled={!produto.ativo}
           onClick={() => abrirMovimentacao("entrada", produto)}
         />
         <Button
-          label="Saida"
+          label="Saída"
           icon="pi pi-minus"
           size="small"
           severity="warning"
+          disabled={!produto.ativo}
           onClick={() => abrirMovimentacao("saida", produto)}
         />
         <Link href={`/produtos/${produto.id}`}>
@@ -225,8 +356,22 @@ export default function PaginaEstoque() {
 
   function obterClasseLinha(produto) {
     return {
-      [styles.lowStockRow]: estoqueEstaBaixo(produto)
+      [styles.lowStockRow]: estoqueEstaBaixo(produto),
+      [styles.expiredRow]: produtoTemEstoqueVencido(produto),
+      [styles.expiringRow]: produtoProximoDoVencimento(produto),
+      [styles.inactiveRow]: !produto.ativo
     };
+  }
+
+  function limparFiltrosTabela() {
+    setFiltroGlobal("");
+    setFiltroCategoria(null);
+    setFiltroStatus(null);
+  }
+
+  function atualizarCampoProduto(campo, valor) {
+    setFormularioProduto((formularioAtual) => ({ ...formularioAtual, [campo]: valor }));
+    setErrosProduto((errosAtuais) => ({ ...errosAtuais, [campo]: null }));
   }
 
   const renderizarRodapeDialogoProduto = () => (
@@ -238,10 +383,11 @@ export default function PaginaEstoque() {
 
   return (
     <section className={styles.page}>
+      <Toast ref={notificacaoRef} />
+
       <header className={styles.header}>
         <div>
           <h1>Estoque</h1>
-          <p>Gerencie produtos, entradas, saidas e saldos do estoque.</p>
         </div>
 
         <Button label="Cadastrar Produto" icon="pi pi-plus" onClick={() => setModalProduto(true)} />
@@ -254,73 +400,106 @@ export default function PaginaEstoque() {
           </div>
         ) : null}
 
+        <div className={styles.summaryGrid}>
+          <article className={`${styles.summaryItem} ${styles.summaryDanger}`}>
+            <span>Estoque baixo</span>
+            <strong>{produtosComEstoqueBaixo.length}</strong>
+          </article>
+
+          <article className={`${styles.summaryItem} ${styles.summaryDanger}`}>
+            <span>Produto vencido</span>
+            <strong>{produtosVencidos.length}</strong>
+          </article>
+
+          <article className={`${styles.summaryItem} ${styles.summaryWarning}`}>
+            <span>Próximo do vencimento</span>
+            <strong>{produtosProximosVencimento.length}</strong>
+          </article>
+
+          <article className={styles.summaryItem}>
+            <span>Produto inativo</span>
+            <strong>{produtosInativos.length}</strong>
+          </article>
+        </div>
+
         <div className={styles.toolbar}>
           <div className={styles.toolbarTitle}>
             <h2>Produtos</h2>
-            <p>Lista principal do estoque com destaque visual para saldo abaixo do minimo.</p>
           </div>
 
-          <span className={`p-input-icon-left ${styles.searchBox}`}>
-            <i className="pi pi-search" />
-            <InputText
-              value={filtroGlobal}
-              onChange={(evento) => setFiltroGlobal(evento.target.value)}
-              placeholder="Buscar por nome"
+          <div className={styles.filters}>
+            <span className={`p-input-icon-left ${styles.searchBox}`}>
+              <i className="pi pi-search" />
+              <InputText
+                value={filtroGlobal}
+                onChange={(evento) => setFiltroGlobal(evento.target.value)}
+                placeholder="Buscar produto"
+              />
+            </span>
+
+            <Dropdown
+              className={styles.filterSelect}
+              value={filtroCategoria}
+              options={opcoesFiltroCategoria}
+              onChange={(evento) => setFiltroCategoria(evento.value)}
+              placeholder="Todas as categorias"
             />
-          </span>
+
+            <Dropdown
+              className={styles.filterSelect}
+              value={filtroStatus}
+              options={opcoesFiltroStatus}
+              onChange={(evento) => setFiltroStatus(evento.value)}
+              placeholder="Todos os status"
+            />
+
+            <Button label="Limpar filtros" text onClick={limparFiltrosTabela} />
+          </div>
         </div>
 
-        <DataTable
-          value={produtosAtivos}
-          dataKey="id"
-          loading={carregando}
-          globalFilter={filtroGlobal}
-          globalFilterFields={["nome"]}
-          emptyMessage="Nenhum produto encontrado."
-          rowClassName={obterClasseLinha}
-          responsiveLayout="scroll"
-        >
-          <Column field="nome" header="Nome" sortable />
-          <Column field="categoria" header="Categoria" sortable />
-          <Column field="unidade_medida" header="Unidade" sortable />
-          <Column
-            field="quantidade_atual"
-            header="Quantidade em Estoque"
-            body={renderizarQuantidade}
-            sortable
+        {produtos.length === 0 && !carregando ? (
+          <EstadoVazio
+            icone="pi pi-box"
+            titulo="Nenhum produto cadastrado ainda."
+            descricao="Cadastre o primeiro produto para iniciar o controle de estoque."
+            acao={<Button label="Cadastrar Produto" icon="pi pi-plus" onClick={() => setModalProduto(true)} />}
           />
-          <Column
-            field="preco_venda_padrao"
-            header="Preco Venda"
-            body={(produto) => formatarMoeda(produto.preco_venda_padrao)}
-            sortable
-          />
-          <Column
-            field="estoque_minimo"
-            header="Estoque Min."
-            body={(produto) => formatarQuantidade(produto.estoque_minimo)}
-            sortable
-          />
-          <Column
-            field="valor_estoque_custo"
-            header="Valor Custo"
-            body={(produto) => formatarMoeda(produto.valor_estoque_custo)}
-            sortable
-          />
-          <Column
-            field="valor_estoque_venda"
-            header="Valor Venda"
-            body={(produto) => formatarMoeda(produto.valor_estoque_venda)}
-            sortable
-          />
-          <Column
-            field="proxima_validade"
-            header="Proxima Validade"
-            body={(produto) => formatarData(produto.proxima_validade)}
-            sortable
-          />
-          <Column header="Acoes" body={renderizarAcoes} />
-        </DataTable>
+        ) : (
+          <DataTable
+            value={produtosFiltrados}
+            dataKey="id"
+            loading={carregando}
+            globalFilter={filtroGlobal}
+            globalFilterFields={["nome"]}
+            emptyMessage="Nenhum produto corresponde aos filtros aplicados."
+            rowClassName={obterClasseLinha}
+            responsiveLayout="scroll"
+            paginator
+            rows={10}
+            rowsPerPageOptions={[10, 25, 50]}
+            paginatorTemplate="RowsPerPageDropdown FirstPageLink PrevPageLink CurrentPageReport NextPageLink LastPageLink"
+            currentPageReportTemplate="{first} a {last} de {totalRecords}"
+            sortField="nome"
+            sortOrder={1}
+          >
+            <Column field="nome" header="Produto" sortable />
+            <Column field="categoria" header="Categoria" sortable />
+            <Column
+              field="quantidade_atual"
+              header="Saldo"
+              body={renderizarSaldo}
+              sortable
+            />
+            <Column
+              field="proxima_validade"
+              header="Validade"
+              body={(produto) => formatarData(produto.proxima_validade)}
+              sortable
+            />
+            <Column header="Status" body={renderizarStatus} />
+            <Column header="Ações" body={renderizarAcoes} />
+          </DataTable>
+        )}
       </div>
 
       <Dialog
@@ -331,12 +510,15 @@ export default function PaginaEstoque() {
       >
         <form className={styles.form} onSubmit={enviarFormularioProduto}>
           <div className={styles.field}>
-            <label htmlFor="produto-nome">Nome</label>
+            <label htmlFor="produto-nome">Nome do produto</label>
             <InputText
               id="produto-nome"
+              className={errosProduto.nome ? "p-invalid" : ""}
               value={formularioProduto.nome}
-              onChange={(evento) => setFormularioProduto((formularioAtual) => ({ ...formularioAtual, nome: evento.target.value }))}
+              placeholder="Ex.: Tomate italiano"
+              onChange={(evento) => atualizarCampoProduto("nome", evento.target.value)}
             />
+            {errosProduto.nome ? <small className={styles.fieldError}>{errosProduto.nome}</small> : null}
           </div>
 
           <div className={styles.row}>
@@ -344,68 +526,94 @@ export default function PaginaEstoque() {
               <label htmlFor="produto-categoria">Categoria</label>
               <Dropdown
                 id="produto-categoria"
+                className={errosProduto.categoria ? "p-invalid" : ""}
                 value={formularioProduto.categoria}
                 options={opcoesCategoria}
-                onChange={(evento) => setFormularioProduto((formularioAtual) => ({ ...formularioAtual, categoria: evento.value }))}
+                placeholder="Selecione a categoria"
+                onChange={(evento) => atualizarCampoProduto("categoria", evento.value)}
               />
+              {errosProduto.categoria ? <small className={styles.fieldError}>{errosProduto.categoria}</small> : null}
             </div>
 
             <div className={styles.field}>
-              <label htmlFor="produto-unidade">Unidade</label>
+              <label htmlFor="produto-unidade">Unidade de medida</label>
               <Dropdown
                 id="produto-unidade"
+                className={errosProduto.unidade_medida ? "p-invalid" : ""}
                 value={formularioProduto.unidade_medida}
                 options={opcoesUnidade}
-                onChange={(evento) => setFormularioProduto((formularioAtual) => ({ ...formularioAtual, unidade_medida: evento.value }))}
+                placeholder="Selecione a unidade"
+                onChange={(evento) => atualizarCampoProduto("unidade_medida", evento.value)}
               />
+              {errosProduto.unidade_medida ? (
+                <small className={styles.fieldError}>{errosProduto.unidade_medida}</small>
+              ) : null}
             </div>
           </div>
 
           <div className={styles.field}>
-            <label htmlFor="produto-estoque-minimo">Estoque minimo</label>
+            <label htmlFor="produto-estoque-minimo">Estoque mínimo</label>
             <InputNumber
               id="produto-estoque-minimo"
               inputId="produto-estoque-minimo-input"
+              inputClassName={errosProduto.estoque_minimo ? "p-invalid" : ""}
               min={0}
               minFractionDigits={0}
               maxFractionDigits={3}
               mode="decimal"
               value={formularioProduto.estoque_minimo}
+              placeholder="0"
               onValueChange={(evento) =>
-                setFormularioProduto((formularioAtual) => ({ ...formularioAtual, estoque_minimo: evento.value ?? 0 }))
+                atualizarCampoProduto("estoque_minimo", evento.value ?? 0)
               }
             />
+            {errosProduto.estoque_minimo ? (
+              <small className={styles.fieldError}>{errosProduto.estoque_minimo}</small>
+            ) : null}
           </div>
 
           <div className={styles.row}>
             <div className={styles.field}>
-              <label htmlFor="produto-preco-venda">Preco de venda padrao</label>
+              <label htmlFor="produto-preco-venda">Preço de venda</label>
               <InputNumber
                 id="produto-preco-venda"
                 inputId="produto-preco-venda-input"
+                inputClassName={errosProduto.preco_venda_padrao ? "p-invalid" : ""}
                 min={0}
                 minFractionDigits={2}
                 maxFractionDigits={2}
                 mode="decimal"
+                locale="pt-BR"
+                useGrouping={false}
                 value={formularioProduto.preco_venda_padrao}
+                placeholder="0,00"
+                onFocus={(evento) => evento.target.select()}
                 onValueChange={(evento) =>
-                  setFormularioProduto((formularioAtual) => ({ ...formularioAtual, preco_venda_padrao: evento.value ?? 0 }))
+                  atualizarCampoProduto("preco_venda_padrao", evento.value ?? 0)
                 }
               />
+              {errosProduto.preco_venda_padrao ? (
+                <small className={styles.fieldError}>{errosProduto.preco_venda_padrao}</small>
+              ) : null}
             </div>
 
             <div className={styles.field}>
-              <label htmlFor="produto-validade">Validade padrao (dias)</label>
+              <label htmlFor="produto-validade">Validade padrão em dias</label>
               <InputNumber
                 id="produto-validade"
                 inputId="produto-validade-input"
+                inputClassName={errosProduto.validade_dias_padrao ? "p-invalid" : ""}
                 min={1}
                 useGrouping={false}
                 value={formularioProduto.validade_dias_padrao}
+                placeholder="Ex.: 5"
                 onValueChange={(evento) =>
-                  setFormularioProduto((formularioAtual) => ({ ...formularioAtual, validade_dias_padrao: evento.value ?? 1 }))
+                  atualizarCampoProduto("validade_dias_padrao", evento.value ?? 1)
                 }
               />
+              {errosProduto.validade_dias_padrao ? (
+                <small className={styles.fieldError}>{errosProduto.validade_dias_padrao}</small>
+              ) : null}
             </div>
           </div>
 
@@ -413,16 +621,16 @@ export default function PaginaEstoque() {
         </form>
       </Dialog>
 
-      <MovimentacaoDialog
-        visible={modalEntrada || modalSaida}
+      <ModalMovimentacao
+        visivel={modalEntrada || modalSaida}
         tipo={modalEntrada ? "entrada" : "saida"}
-        produtoLabel={produtoSelecionado ? `${produtoSelecionado.nome} (${produtoSelecionado.unidade_medida})` : ""}
+        rotuloProduto={produtoSelecionado ? `${produtoSelecionado.nome} (${produtoSelecionado.unidade_medida})` : ""}
         formulario={formularioMovimentacao}
         salvando={salvandoMovimentacao}
-        styles={styles}
-        onChange={setFormularioMovimentacao}
-        onHide={fecharModalMovimentacao}
-        onSubmit={enviarFormularioMovimentacao}
+        estilos={styles}
+        aoAlterar={setFormularioMovimentacao}
+        aoFechar={fecharModalMovimentacao}
+        aoEnviar={enviarFormularioMovimentacao}
       />
     </section>
   );

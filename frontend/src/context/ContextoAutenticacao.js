@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
-import { solicitarLogin } from "@/services/authService";
+import { solicitarLogin } from "@/services/servicoAutenticacao";
 
 const ContextoAutenticacao = createContext(null);
 
@@ -12,7 +12,16 @@ function buscarJsonArmazenado(chave) {
   }
 
   const valor = localStorage.getItem(chave);
-  return valor ? JSON.parse(valor) : null;
+  if (!valor) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(valor);
+  } catch {
+    localStorage.removeItem(chave);
+    return null;
+  }
 }
 
 function buscarValorArmazenado(chave) {
@@ -42,6 +51,8 @@ export function ProvedorAutenticacao({ children }) {
 
     setToken(dados.token);
     setUsuario(dados.usuario);
+
+    return dados;
   }
 
   function sair() {
