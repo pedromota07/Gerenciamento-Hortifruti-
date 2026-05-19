@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, use } from "react";
 import { Button } from "primereact/button";
 import { Column } from "primereact/column";
 import { DataTable } from "primereact/datatable";
@@ -33,7 +33,8 @@ const formularioMovimentacaoInicial = {
 };
 
 export default function PaginaDetalheProduto({ params }) {
-  const produtoId = params?.id;
+  const unwrappedParams = use(params);
+  const produtoId = unwrappedParams?.id;
 
   const [produto, setProduto] = useState(null);
   const [camadas, setCamadas] = useState([]);

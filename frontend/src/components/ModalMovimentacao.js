@@ -57,6 +57,7 @@ export default function ModalMovimentacao({
               minFractionDigits={0}
               maxFractionDigits={3}
               mode="decimal"
+              locale="pt-BR"
               value={formulario.quantidade}
               onValueChange={(evento) => atualizarCampo("quantidade", evento.value)}
             />
