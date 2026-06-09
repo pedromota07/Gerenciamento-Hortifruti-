@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" agent="Codex" version="24.7.17" type="device" pages="1">
+  <diagram id="uml-classes-hortifruti" name="UML Classes">
+    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1900" pageHeight="1300" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="title" value="Diagrama de Classes UML - Sistema Hortifruti" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=28;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="420" y="20" width="1060" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" value="Models, enums, associacoes e modulo serializer rastreados no backend" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=15;fontColor=#555555" vertex="1" parent="1">
+          <mxGeometry x="320" y="58" width="1260" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="legend" value="Legenda UML: + publico | - privado/auxiliar | &lt;&lt;enum&gt;&gt; tipo enumerado | 1, 0..1 e 0..* indicam multiplicidade" style="rounded=1;arcSize=6;whiteSpace=wrap;html=1;fillColor=#f9fafb;strokeColor=#b8c0cc;strokeWidth=1.5;align=center;verticalAlign=middle;fontSize=14" vertex="1" parent="1">
+          <mxGeometry x="330" y="95" width="1240" height="42" as="geometry" />
+        </mxCell>
+
+        <mxCell id="produto" value="&lt;div align=&quot;center&quot;&gt;&lt;b&gt;Produto&lt;/b&gt;&lt;/div&gt;&lt;hr&gt;+ id: int&lt;br&gt;+ nome: str&lt;br&gt;+ categoria: CategoriaProduto&lt;br&gt;+ unidade_medida: UnidadeMedida&lt;br&gt;+ estoque_minimo: Decimal&lt;br&gt;+ preco_venda_padrao: Decimal&lt;br&gt;+ validade_dias_padrao: int&lt;br&gt;+ quantidade_atual: Decimal&lt;br&gt;+ ativo: bool&lt;br&gt;+ created_at: datetime&lt;br&gt;+ updated_at: datetime&lt;hr&gt;+ to_dict(): dict" style="rounded=1;arcSize=6;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;strokeWidth=2;align=left;verticalAlign=top;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="70" y="180" width="360" height="285" as="geometry" />
+        </mxCell>
+        <mxCell id="produto_serializer" value="&lt;div align=&quot;center&quot;&gt;&amp;lt;&amp;lt;module&amp;gt;&amp;gt;&lt;br&gt;&lt;b&gt;serializers.produto&lt;/b&gt;&lt;/div&gt;&lt;hr&gt;+ serialize_produto(produto, reference_date=None): dict&lt;br&gt;- _camadas_abertas(produto): list&lt;br&gt;- _quantidade_vencida(produto, reference_date): Decimal&lt;br&gt;- _quantidade_disponivel_venda(produto, reference_date): Decimal&lt;br&gt;- _valor_estoque_custo(produto): Decimal&lt;br&gt;- _valor_estoque_venda(produto, reference_date): Decimal&lt;br&gt;- _proxima_validade(produto, reference_date): date | None" style="rounded=1;arcSize=6;whiteSpace=wrap;html=1;fillColor=#f9fafb;strokeColor=#333333;strokeWidth=2;align=left;verticalAlign=top;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="70" y="500" width="440" height="210" as="geometry" />
+        </mxCell>
+        <mxCell id="usuario" value="&lt;div align=&quot;center&quot;&gt;&lt;b&gt;Usuario&lt;/b&gt;&lt;/div&gt;&lt;hr&gt;+ id: int&lt;br&gt;+ nome: str&lt;br&gt;+ email: str&lt;br&gt;+ senha_hash: str&lt;br&gt;+ perfil: PerfilUsuario&lt;br&gt;+ ativo: bool&lt;br&gt;+ created_at: datetime&lt;br&gt;+ updated_at: datetime&lt;hr&gt;+ to_dict(): dict" style="rounded=1;arcSize=6;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;strokeWidth=2;align=left;verticalAlign=top;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="70" y="780" width="310" height="230" as="geometry" />
+        </mxCell>
+        <mxCell id="movimentacao" value="&lt;div align=&quot;center&quot;&gt;&lt;b&gt;Movimentacao&lt;/b&gt;&lt;/div&gt;&lt;hr&gt;+ id: int&lt;br&gt;+ produto_id: int&lt;br&gt;+ usuario_id: int&lt;br&gt;+ tipo: TipoMovimentacao&lt;br&gt;+ subtipo: SubtipoMovimentacao | None&lt;br&gt;+ quantidade: Decimal&lt;br&gt;+ custo_unitario: Decimal | None&lt;br&gt;+ preco_unitario_venda: Decimal | None&lt;br&gt;+ receita_total: Decimal | None&lt;br&gt;+ custo_total: Decimal | None&lt;br&gt;+ lucro_bruto: Decimal | None&lt;br&gt;+ data: date&lt;br&gt;+ observacao: str | None&lt;br&gt;+ created_at: datetime&lt;hr&gt;+ to_dict(): dict" style="rounded=1;arcSize=6;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;strokeWidth=2;align=left;verticalAlign=top;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="590" y="310" width="390" height="340" as="geometry" />
+        </mxCell>
+        <mxCell id="camada_estoque" value="&lt;div align=&quot;center&quot;&gt;&lt;b&gt;CamadaEstoque&lt;/b&gt;&lt;/div&gt;&lt;hr&gt;+ id: int&lt;br&gt;+ produto_id: int&lt;br&gt;+ movimentacao_entrada_id: int&lt;br&gt;+ quantidade_inicial: Decimal&lt;br&gt;+ quantidade_disponivel: Decimal&lt;br&gt;+ custo_unitario: Decimal&lt;br&gt;+ data_entrada: date&lt;br&gt;+ data_validade: date&lt;br&gt;+ created_at: datetime&lt;hr&gt;+ to_dict(): dict" style="rounded=1;arcSize=6;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;strokeWidth=2;align=left;verticalAlign=top;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="1120" y="190" width="360" height="265" as="geometry" />
+        </mxCell>
+        <mxCell id="consumo_saida" value="&lt;div align=&quot;center&quot;&gt;&lt;b&gt;ConsumoSaida&lt;/b&gt;&lt;/div&gt;&lt;hr&gt;+ id: int&lt;br&gt;+ movimentacao_saida_id: int&lt;br&gt;+ camada_estoque_id: int&lt;br&gt;+ quantidade_consumida: Decimal&lt;br&gt;+ custo_unitario: Decimal&lt;br&gt;+ custo_total: Decimal&lt;br&gt;+ created_at: datetime&lt;hr&gt;+ to_dict(): dict" style="rounded=1;arcSize=6;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;strokeWidth=2;align=left;verticalAlign=top;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="1120" y="610" width="360" height="230" as="geometry" />
+        </mxCell>
+
+        <mxCell id="categoria" value="&lt;div align=&quot;center&quot;&gt;&amp;lt;&amp;lt;enum&amp;gt;&amp;gt;&lt;br&gt;&lt;b&gt;CategoriaProduto&lt;/b&gt;&lt;/div&gt;&lt;hr&gt;FRUTA&lt;br&gt;LEGUME&lt;br&gt;VERDURA" style="rounded=1;arcSize=6;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#333333;strokeWidth=2;align=left;verticalAlign=top;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="600" y="910" width="230" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="unidade" value="&lt;div align=&quot;center&quot;&gt;&amp;lt;&amp;lt;enum&amp;gt;&amp;gt;&lt;br&gt;&lt;b&gt;UnidadeMedida&lt;/b&gt;&lt;/div&gt;&lt;hr&gt;KG&lt;br&gt;UN&lt;br&gt;CX" style="rounded=1;arcSize=6;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#333333;strokeWidth=2;align=left;verticalAlign=top;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="870" y="910" width="220" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="perfil" value="&lt;div align=&quot;center&quot;&gt;&amp;lt;&amp;lt;enum&amp;gt;&amp;gt;&lt;br&gt;&lt;b&gt;PerfilUsuario&lt;/b&gt;&lt;/div&gt;&lt;hr&gt;FUNCIONARIO&lt;br&gt;GERENTE" style="rounded=1;arcSize=6;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#333333;strokeWidth=2;align=left;verticalAlign=top;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="1140" y="910" width="220" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="tipo_movimentacao" value="&lt;div align=&quot;center&quot;&gt;&amp;lt;&amp;lt;enum&amp;gt;&amp;gt;&lt;br&gt;&lt;b&gt;TipoMovimentacao&lt;/b&gt;&lt;/div&gt;&lt;hr&gt;ENTRADA&lt;br&gt;SAIDA" style="rounded=1;arcSize=6;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#333333;strokeWidth=2;align=left;verticalAlign=top;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="1540" y="360" width="245" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="subtipo_movimentacao" value="&lt;div align=&quot;center&quot;&gt;&amp;lt;&amp;lt;enum&amp;gt;&amp;gt;&lt;br&gt;&lt;b&gt;SubtipoMovimentacao&lt;/b&gt;&lt;/div&gt;&lt;hr&gt;COMPRA&lt;br&gt;VENDA&lt;br&gt;PERDA" style="rounded=1;arcSize=6;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#333333;strokeWidth=2;align=left;verticalAlign=top;spacing=10;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="1540" y="545" width="245" height="140" as="geometry" />
+        </mxCell>
+
+        <mxCell id="edge_serializer_prod" value="usa Produto e camadas" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;fontSize=13;endArrow=none;labelBackgroundColor=#ffffff;dashed=1;exitX=0.20;exitY=0;entryX=0.20;entryY=1;" edge="1" parent="1" source="produto_serializer" target="produto">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_prod_mov" value="movimentacoes" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;fontSize=13;endArrow=none;labelBackgroundColor=#ffffff;exitX=1;exitY=0.45;entryX=0;entryY=0.25;" edge="1" parent="1" source="produto" target="movimentacao">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_usuario_mov" value="movimentacoes" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;fontSize=13;endArrow=none;labelBackgroundColor=#ffffff;exitX=1;exitY=0.45;entryX=0;entryY=0.80;" edge="1" parent="1" source="usuario" target="movimentacao">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="535" y="884" />
+              <mxPoint x="535" y="582" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge_prod_camada" value="camadas_estoque" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;fontSize=13;endArrow=none;labelBackgroundColor=#ffffff;exitX=1;exitY=0.12;entryX=0;entryY=0.18;" edge="1" parent="1" source="produto" target="camada_estoque">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="500" y="214" />
+              <mxPoint x="500" y="160" />
+              <mxPoint x="1080" y="160" />
+              <mxPoint x="1080" y="238" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge_mov_camada" value="entrada cria" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;fontSize=13;endArrow=none;labelBackgroundColor=#ffffff;exitX=1;exitY=0.30;entryX=0;entryY=0.62;" edge="1" parent="1" source="movimentacao" target="camada_estoque">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_mov_consumo" value="consumos_saida" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;fontSize=13;endArrow=none;labelBackgroundColor=#ffffff;exitX=1;exitY=0.84;entryX=0;entryY=0.40;" edge="1" parent="1" source="movimentacao" target="consumo_saida">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_camada_consumo" value="consumos_saida" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;fontSize=13;endArrow=none;labelBackgroundColor=#ffffff;exitX=0.50;exitY=1;entryX=0.50;entryY=0;" edge="1" parent="1" source="camada_estoque" target="consumo_saida">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="lbl_prod_mov_a" value="1" style="text;html=1;strokeColor=none;fillColor=#ffffff;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=13;fontColor=#374151" vertex="1" parent="1">
+          <mxGeometry x="440" y="300" width="35" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_prod_mov_b" value="0..*" style="text;html=1;strokeColor=none;fillColor=#ffffff;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=13;fontColor=#374151" vertex="1" parent="1">
+          <mxGeometry x="528" y="386" width="60" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_user_mov_a" value="1" style="text;html=1;strokeColor=none;fillColor=#ffffff;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=13;fontColor=#374151" vertex="1" parent="1">
+          <mxGeometry x="395" y="870" width="35" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_user_mov_b" value="0..*" style="text;html=1;strokeColor=none;fillColor=#ffffff;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=13;fontColor=#374151" vertex="1" parent="1">
+          <mxGeometry x="530" y="565" width="60" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_prod_cam_a" value="1" style="text;html=1;strokeColor=none;fillColor=#ffffff;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=13;fontColor=#374151" vertex="1" parent="1">
+          <mxGeometry x="440" y="200" width="35" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_prod_cam_b" value="0..*" style="text;html=1;strokeColor=none;fillColor=#ffffff;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=13;fontColor=#374151" vertex="1" parent="1">
+          <mxGeometry x="1060" y="220" width="60" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_mov_cam_a" value="1" style="text;html=1;strokeColor=none;fillColor=#ffffff;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=13;fontColor=#374151" vertex="1" parent="1">
+          <mxGeometry x="995" y="395" width="35" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_mov_cam_b" value="0..1" style="text;html=1;strokeColor=none;fillColor=#ffffff;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=13;fontColor=#374151" vertex="1" parent="1">
+          <mxGeometry x="1060" y="345" width="60" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_mov_cons_a" value="1" style="text;html=1;strokeColor=none;fillColor=#ffffff;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=13;fontColor=#374151" vertex="1" parent="1">
+          <mxGeometry x="995" y="585" width="35" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_mov_cons_b" value="0..*" style="text;html=1;strokeColor=none;fillColor=#ffffff;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=13;fontColor=#374151" vertex="1" parent="1">
+          <mxGeometry x="1060" y="690" width="60" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_cam_cons_a" value="1" style="text;html=1;strokeColor=none;fillColor=#ffffff;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=13;fontColor=#374151" vertex="1" parent="1">
+          <mxGeometry x="1300" y="470" width="35" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_cam_cons_b" value="0..*" style="text;html=1;strokeColor=none;fillColor=#ffffff;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=13;fontColor=#374151" vertex="1" parent="1">
+          <mxGeometry x="1288" y="570" width="60" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="trace" value="Rastreabilidade: backend/app/models/*.py e backend/app/serializers/produto.py" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=14;fontColor=#555555" vertex="1" parent="1">
+          <mxGeometry x="320" y="1210" width="1260" height="40" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
