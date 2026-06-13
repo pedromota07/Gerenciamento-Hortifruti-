@@ -8,8 +8,8 @@ DEFAULT_DATABASE_URL = f"sqlite:///{(BASE_DIR / 'instance' / 'hortifruti_dev.db'
 
 
 class Config:
-    SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret")
-    JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dev-jwt-secret")
+    SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-before-production-32")
+    JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dev-jwt-secret-change-before-production-32")
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=8)
     SQLALCHEMY_DATABASE_URI = os.getenv(
         "DATABASE_URL",

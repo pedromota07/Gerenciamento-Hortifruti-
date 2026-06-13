@@ -3,6 +3,7 @@ from marshmallow import ValidationError
 
 from ..extensions import db
 from ..schemas.usuario import UsuarioCreateSchema, UsuarioUpdateSchema
+from ..shared.auth import gerente_required
 from ..shared.errors import DomainError
 from ..shared.http import json_error, load_payload
 from .service import UsuarioService
@@ -14,12 +15,14 @@ _usuario_update_schema = UsuarioUpdateSchema()
 
 
 @usuarios_bp.get("")
+@gerente_required
 def list_usuarios():
     usuarios = UsuarioService(db.session).listar()
     return jsonify([usuario.to_dict() for usuario in usuarios]), 200
 
 
 @usuarios_bp.post("")
+@gerente_required
 def create_usuario():
     try:
         data = load_payload(_usuario_create_schema)
@@ -33,6 +36,7 @@ def create_usuario():
 
 
 @usuarios_bp.put("/<int:usuario_id>")
+@gerente_required
 def update_usuario(usuario_id):
     try:
         data = load_payload(_usuario_update_schema)

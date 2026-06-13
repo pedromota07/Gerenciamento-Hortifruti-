@@ -9,7 +9,8 @@ O projeto é dividido em dois módulos:
 
 ## Funcionalidades
 
-- Autenticação de usuários com token JWT.
+- Autenticação de usuários com token JWT e validação no backend.
+- Autorização por perfil, com gestão de usuários restrita a gerentes.
 - Cadastro, listagem e atualização de usuários.
 - Cadastro, consulta, atualização e inativação de produtos.
 - Controle de estoque por camadas de entrada.
@@ -200,6 +201,10 @@ Usuários com perfil de gerente acessam a gestão de usuários. Usuários com pe
 
 ## Endpoints principais
 
+Com exceção de `GET /api/health` e `POST /api/auth/login`, todos os endpoints
+exigem o cabeçalho `Authorization: Bearer <token>`. As rotas de usuários também
+exigem que o usuário autenticado tenha perfil de gerente.
+
 | Recurso | Endpoint |
 | --- | --- |
 | Health check | `GET /api/health` |
@@ -238,6 +243,9 @@ docs/validacao-funcional-hortifruti.md
 
 ## Regras importantes do domínio
 
+- O backend rejeita rotas protegidas sem JWT válido.
+- Somente gerentes podem listar, criar ou atualizar usuários.
+- O usuário responsável por uma movimentação é obtido do JWT, não do payload enviado pelo cliente.
 - Cada entrada de estoque cria uma camada com quantidade, custo unitário, data de entrada e data de validade.
 - Saídas por venda calculam receita, custo total e lucro bruto.
 - Saídas por perda consomem estoque e registram custo, mas não geram receita.
