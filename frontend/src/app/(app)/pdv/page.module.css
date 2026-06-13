@@ -252,19 +252,6 @@
   box-shadow: 0 0 0 3px rgba(47, 111, 78, 0.1);
 }
 
-.productIcon,
-.selectedProductIcon,
-.saleIcon {
-  display: inline-grid;
-  width: 38px;
-  height: 38px;
-  flex: 0 0 auto;
-  place-items: center;
-  border-radius: 11px;
-  background: var(--accent-soft);
-  color: var(--accent-strong);
-}
-
 .productContent {
   display: grid;
   min-width: 0;

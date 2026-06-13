@@ -264,26 +264,6 @@
   border-top: 1px solid var(--border);
 }
 
-.attentionIcon,
-.activityIcon {
-  display: inline-grid;
-  width: 38px;
-  height: 38px;
-  flex: 0 0 auto;
-  place-items: center;
-  border-radius: 11px;
-}
-
-.attentionWarning {
-  background: var(--warning-soft);
-  color: #92600d;
-}
-
-.attentionDanger {
-  background: var(--danger-soft);
-  color: var(--tomato);
-}
-
 .attentionContent {
   min-width: 0;
 }
@@ -296,7 +276,8 @@
 
 .attentionContent strong {
   overflow: hidden;
-  font-size: 0.9rem;
+  font-size: 0.98rem;
+  letter-spacing: -0.015em;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -499,27 +480,6 @@
   border-top: 1px solid var(--border);
 }
 
-.activityIcon {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-}
-
-.activityIcon_entry {
-  background: #eaf7ed;
-  color: #267b47;
-}
-
-.activityIcon_sale {
-  background: #e9f2ed;
-  color: var(--accent);
-}
-
-.activityIcon_loss {
-  background: var(--danger-soft);
-  color: var(--tomato);
-}
-
 .activityProduct {
   display: grid;
   min-width: 0;
@@ -527,7 +487,7 @@
 
 .activityProduct strong {
   overflow: hidden;
-  font-size: 0.86rem;
+  font-size: 0.9rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

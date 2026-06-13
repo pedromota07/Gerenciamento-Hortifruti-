@@ -7,6 +7,7 @@ import { Message } from "primereact/message";
 import { Toast } from "primereact/toast";
 
 import EstadoVazio from "@/components/EstadoVazio";
+import ProdutoVisual from "@/components/ProdutoVisual";
 import { registrarSaida } from "@/services/servicoMovimentacoes";
 import { buscarProdutos } from "@/services/servicoProdutos";
 import { formatarMoeda, formatarQuantidadeComUnidade } from "@/utils/formatters";
@@ -161,6 +162,7 @@ export default function PaginaPdv() {
           {
             id: resposta.movimentacao.id,
             produto_nome: produtoAtualizado.nome,
+            categoria: produtoAtualizado.categoria,
             quantidade: resposta.movimentacao.quantidade,
             saldo_disponivel: produtoAtualizado.quantidade_disponivel_venda,
             unidade_medida: produtoAtualizado.unidade_medida,
@@ -315,9 +317,7 @@ export default function PaginaPdv() {
                     disabled={semEstoque}
                     aria-pressed={selecionado}
                   >
-                    <span className={styles.productIcon}>
-                      <i className="pi pi-shopping-bag" aria-hidden="true" />
-                    </span>
+                    <ProdutoVisual nome={produto.nome} categoria={produto.categoria} tamanho="compacto" />
                     <span className={styles.productContent}>
                       <strong>{produto.nome}</strong>
                       <span>{formatarMoeda(produto.preco_venda_padrao)}</span>
@@ -348,9 +348,11 @@ export default function PaginaPdv() {
           {produtoSelecionado ? (
             <>
               <div className={styles.selectedProduct}>
-                <div className={styles.selectedProductIcon}>
-                  <i className="pi pi-shopping-bag" aria-hidden="true" />
-                </div>
+                <ProdutoVisual
+                  nome={produtoSelecionado.nome}
+                  categoria={produtoSelecionado.categoria}
+                  tamanho="compacto"
+                />
                 <div>
                   <span>Produto selecionado</span>
                   <strong>{produtoSelecionado.nome}</strong>
@@ -476,9 +478,7 @@ export default function PaginaPdv() {
           <div className={styles.salesList}>
             {ultimasVendas.map((venda) => (
               <article className={styles.saleItem} key={venda.id}>
-                <span className={styles.saleIcon}>
-                  <i className="pi pi-check" aria-hidden="true" />
-                </span>
+                <ProdutoVisual nome={venda.produto_nome} categoria={venda.categoria} tamanho="compacto" />
                 <div className={styles.saleProduct}>
                   <strong>{venda.produto_nome}</strong>
                   <span>

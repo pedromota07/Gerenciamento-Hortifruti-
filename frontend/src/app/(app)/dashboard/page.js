@@ -6,6 +6,7 @@ import { Button } from "primereact/button";
 import { Message } from "primereact/message";
 
 import EstadoVazio from "@/components/EstadoVazio";
+import ProdutoVisual from "@/components/ProdutoVisual";
 import { buscarProdutos } from "@/services/servicoProdutos";
 import { buscarFinanceiro, buscarHistoricoGeral, buscarValidade } from "@/services/servicoRelatorios";
 import { formatarData, formatarMoeda, formatarQuantidadeComUnidade } from "@/utils/formatters";
@@ -223,9 +224,7 @@ export default function PaginaPainel() {
             <div className={styles.attentionList}>
               {produtosEmAlerta.slice(0, 4).map((produto) => (
                 <article className={styles.attentionItem} key={`estoque-${produto.id}`}>
-                  <span className={`${styles.attentionIcon} ${styles.attentionWarning}`}>
-                    <i className="pi pi-box" aria-hidden="true" />
-                  </span>
+                  <ProdutoVisual nome={produto.nome} categoria={produto.categoria} />
                   <div className={styles.attentionContent}>
                     <div>
                       <strong>{produto.nome}</strong>
@@ -248,9 +247,7 @@ export default function PaginaPainel() {
 
               {vencidos.slice(0, 3).map((produto) => (
                 <article className={styles.attentionItem} key={`vencido-${produto.produto_id}`}>
-                  <span className={`${styles.attentionIcon} ${styles.attentionDanger}`}>
-                    <i className="pi pi-calendar-times" aria-hidden="true" />
-                  </span>
+                  <ProdutoVisual nome={produto.produto_nome} categoria={produto.categoria} />
                   <div className={styles.attentionContent}>
                     <div>
                       <strong>{produto.produto_nome}</strong>
@@ -269,9 +266,7 @@ export default function PaginaPainel() {
 
               {proximosDoVencimento.slice(0, 3).map((produto) => (
                 <article className={styles.attentionItem} key={`validade-${produto.produto_id}`}>
-                  <span className={`${styles.attentionIcon} ${styles.attentionWarning}`}>
-                    <i className="pi pi-clock" aria-hidden="true" />
-                  </span>
+                  <ProdutoVisual nome={produto.produto_nome} categoria={produto.categoria} />
                   <div className={styles.attentionContent}>
                     <div>
                       <strong>{produto.produto_nome}</strong>
@@ -379,18 +374,11 @@ export default function PaginaPainel() {
 
               return (
                 <article className={styles.activityItem} key={movimentacao.id}>
-                  <span className={`${styles.activityIcon} ${styles[`activityIcon_${tom}`]}`}>
-                    <i
-                      className={
-                        tom === "entry"
-                          ? "pi pi-arrow-down"
-                          : tom === "loss"
-                            ? "pi pi-times"
-                            : "pi pi-arrow-up"
-                      }
-                      aria-hidden="true"
-                    />
-                  </span>
+                  <ProdutoVisual
+                    nome={movimentacao.produto_nome}
+                    categoria={movimentacao.categoria}
+                    tamanho="compacto"
+                  />
                   <div className={styles.activityProduct}>
                     <strong>{movimentacao.produto_nome}</strong>
                     <span>{formatarData(movimentacao.data)}</span>

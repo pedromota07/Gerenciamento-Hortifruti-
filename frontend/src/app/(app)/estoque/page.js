@@ -15,6 +15,7 @@ import { Toast } from "primereact/toast";
 
 import EstadoVazio from "@/components/EstadoVazio";
 import ModalMovimentacao from "@/components/ModalMovimentacao";
+import ProdutoVisual from "@/components/ProdutoVisual";
 import { registrarEntrada, registrarSaida } from "@/services/servicoMovimentacoes";
 import { criarProduto, buscarProdutos } from "@/services/servicoProdutos";
 import { formatarData, formatarMoeda, formatarQuantidadeComUnidade } from "@/utils/formatters";
@@ -68,29 +69,6 @@ const formularioMovimentacaoInicial = {
   subtipo: "venda",
   observacao: ""
 };
-
-function obterVisualProduto(produto) {
-  const nome = produto.nome.toLocaleLowerCase("pt-BR");
-  const visuais = [
-    ["banana", "🍌"],
-    ["laranja", "🍊"],
-    ["morango", "🍓"],
-    ["cenoura", "🥕"],
-    ["tomate", "🍅"],
-    ["batata", "🥔"],
-    ["alface", "🥬"],
-    ["couve", "🥬"],
-    ["abobrinha", "🥒"],
-    ["mamão", "🍈"],
-    ["mamao", "🍈"]
-  ];
-  const visualEncontrado = visuais.find(([termo]) => nome.includes(termo));
-
-  return {
-    simbolo: visualEncontrado?.[1] ?? (produto.categoria === "fruta" ? "🍎" : produto.categoria === "verdura" ? "🥬" : "🥕"),
-    tom: produto.categoria
-  };
-}
 
 export default function PaginaEstoque() {
   const notificacaoRef = useRef(null);
@@ -414,15 +392,11 @@ export default function PaginaEstoque() {
   }
 
   function renderizarCartaoProduto(produto) {
-    const visual = obterVisualProduto(produto);
-
     return (
       <article className={styles.productCard} key={produto.id}>
         <div className={styles.productCardHeader}>
           <div className={styles.mobileProductIdentity}>
-            <span className={`${styles.productVisual} ${styles[`productVisual_${visual.tom}`]}`} aria-hidden="true">
-              {visual.simbolo}
-            </span>
+            <ProdutoVisual nome={produto.nome} categoria={produto.categoria} />
             <div>
               <span className={styles.categoryLabel}>{produto.categoria}</span>
               <h3>{produto.nome}</h3>
@@ -641,17 +615,9 @@ export default function PaginaEstoque() {
                     field="nome"
                     header="Produto"
                     sortable
-                    body={(produto) => {
-                      const visual = obterVisualProduto(produto);
-
-                      return (
+                    body={(produto) => (
                         <Link className={styles.productName} href={`/produtos/${produto.id}`}>
-                          <span
-                            className={`${styles.productVisual} ${styles[`productVisual_${visual.tom}`]}`}
-                            aria-hidden="true"
-                          >
-                            {visual.simbolo}
-                          </span>
+                          <ProdutoVisual nome={produto.nome} categoria={produto.categoria} />
                           <span className={styles.productCopy}>
                             <strong>{produto.nome}</strong>
                             <small>
@@ -661,8 +627,7 @@ export default function PaginaEstoque() {
                             </small>
                           </span>
                         </Link>
-                      );
-                    }}
+                      )}
                     style={{ minWidth: "290px" }}
                   />
                   <Column field="quantidade_atual" header="Estoque" body={renderizarSaldo} sortable />

@@ -341,32 +341,6 @@
   text-transform: capitalize;
 }
 
-.productVisual {
-  display: inline-grid;
-  width: 44px;
-  height: 44px;
-  flex: 0 0 auto;
-  place-items: center;
-  border: 1px solid rgba(47, 111, 78, 0.08);
-  border-radius: 12px;
-  background: var(--accent-soft);
-  font-size: 1.45rem;
-  line-height: 1;
-  transition: transform 140ms var(--ease-out);
-}
-
-.productVisual_fruta {
-  background: #fff1ec;
-}
-
-.productVisual_legume {
-  background: #fff7df;
-}
-
-.productVisual_verdura {
-  background: #eaf5eb;
-}
-
 .statusTags {
   display: flex;
   flex-wrap: wrap;
@@ -535,10 +509,6 @@
   .detailLink:hover,
   .iconAction:hover {
     color: var(--accent-strong);
-  }
-
-  .productName:hover .productVisual {
-    transform: translateY(-1px);
   }
 
   .iconAction:hover {

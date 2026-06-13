@@ -63,6 +63,10 @@
     transform 140ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
+.headerProductVisual {
+  margin-top: 10px;
+}
+
 .eyebrow {
   margin: 0;
   color: var(--accent);
@@ -481,6 +485,10 @@
     margin-top: 17px;
   }
 
+  .headerProductVisual {
+    margin-top: 8px;
+  }
+
   .stockOverview {
     border-radius: 12px;
   }
@@ -556,6 +564,12 @@
   .backButton {
     width: 34px;
     height: 34px;
+  }
+
+  .headerProductVisual {
+    width: 46px;
+    height: 46px;
+    font-size: 1.45rem;
   }
 
   .productHeader h1 {

@@ -17,6 +17,7 @@ import { Toast } from "primereact/toast";
 
 import EstadoVazio from "@/components/EstadoVazio";
 import ModalMovimentacao from "@/components/ModalMovimentacao";
+import ProdutoVisual from "@/components/ProdutoVisual";
 import {
   buscarMovimentacoesPorProduto,
   registrarEntrada,
@@ -288,6 +289,12 @@ export default function PaginaDetalheProduto() {
           <Link className={styles.backButton} href="/estoque" aria-label="Voltar ao estoque">
             <i className="pi pi-arrow-left" />
           </Link>
+          <ProdutoVisual
+            className={styles.headerProductVisual}
+            nome={produto?.nome}
+            categoria={produto?.categoria}
+            tamanho="destaque"
+          />
           <div>
             <p className={styles.eyebrow}>Detalhe do produto</p>
             <h1>{produto?.nome ?? "Carregando produto..."}</h1>

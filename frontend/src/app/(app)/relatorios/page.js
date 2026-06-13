@@ -12,6 +12,7 @@ import { Tag } from "primereact/tag";
 import { Toast } from "primereact/toast";
 
 import EstadoVazio from "@/components/EstadoVazio";
+import ProdutoVisual from "@/components/ProdutoVisual";
 import { buscarProdutos } from "@/services/servicoProdutos";
 import {
   buscarFinanceiro,
@@ -244,6 +245,18 @@ export default function PaginaRelatorios() {
     const severity = linha.tipo === "entrada" ? "success" : linha.subtipo === "perda" ? "danger" : "info";
 
     return <Tag value={rotulo} severity={severity} />;
+  }
+
+  function renderizarProduto(linha) {
+    return (
+      <div className={styles.productIdentity}>
+        <ProdutoVisual nome={linha.produto_nome} categoria={linha.categoria} tamanho="compacto" />
+        <div>
+          <strong>{linha.produto_nome}</strong>
+          {linha.categoria ? <span>{linha.categoria}</span> : null}
+        </div>
+      </div>
+    );
   }
 
   function exportarCsv() {
@@ -617,7 +630,7 @@ export default function PaginaRelatorios() {
             currentPageReportTemplate="{first} a {last} de {totalRecords}"
           >
             <Column field="data" header="Data" body={(linha) => formatarData(linha.data)} />
-            <Column field="produto_nome" header="Produto" />
+            <Column field="produto_nome" header="Produto" body={renderizarProduto} />
             <Column field="tipo" header="Movimentação" body={renderizarTipo} />
             <Column
               field="quantidade"
@@ -636,9 +649,12 @@ export default function PaginaRelatorios() {
             {movimentacoes.map((linha) => (
               <article className={styles.mobileRecord} key={linha.id}>
                 <div className={styles.mobileRecordHeader}>
-                  <div>
-                    <strong>{linha.produto_nome}</strong>
-                    <span>{formatarData(linha.data)}</span>
+                  <div className={styles.mobileProduct}>
+                    <ProdutoVisual nome={linha.produto_nome} categoria={linha.categoria} tamanho="compacto" />
+                    <div>
+                      <strong>{linha.produto_nome}</strong>
+                      <span>{formatarData(linha.data)}</span>
+                    </div>
                   </div>
                   {renderizarTipo(linha)}
                 </div>
@@ -686,7 +702,7 @@ export default function PaginaRelatorios() {
             />
           ) : (
             <DataTable value={maisVendidos} dataKey="produto_id" loading={carregando} responsiveLayout="scroll">
-              <Column field="produto_nome" header="Produto" />
+              <Column field="produto_nome" header="Produto" body={renderizarProduto} />
               <Column
                 field="total_vendido"
                 header="Quantidade"
@@ -724,7 +740,7 @@ export default function PaginaRelatorios() {
               loading={carregando}
               responsiveLayout="scroll"
             >
-              <Column field="produto_nome" header="Produto" />
+              <Column field="produto_nome" header="Produto" body={renderizarProduto} />
               <Column
                 field="quantidade_total"
                 header="Quantidade"

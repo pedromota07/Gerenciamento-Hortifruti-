@@ -378,6 +378,36 @@
   font-size: 0.86rem;
 }
 
+.productIdentity,
+.mobileProduct {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.productIdentity > div,
+.mobileProduct > div {
+  display: grid;
+  min-width: 0;
+}
+
+.productIdentity strong,
+.mobileProduct strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.productIdentity span {
+  color: var(--accent);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
 .mobileList {
   display: none;
 }
