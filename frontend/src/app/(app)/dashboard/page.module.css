@@ -1,242 +1,701 @@
 .page {
   display: grid;
-  gap: 22px;
+  gap: 24px;
+  max-width: 1480px;
+  margin: 0 auto;
 }
 
 .header {
-  padding: 6px 0 2px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
 }
 
 .header h1 {
-  margin: 0 0 8px;
-  font-size: clamp(1.6rem, 2.4vw, 2.25rem);
-  line-height: 1.1;
+  margin: 4px 0 6px;
+  font-size: clamp(1.85rem, 3vw, 2.5rem);
+  line-height: 1.08;
+  letter-spacing: -0.035em;
 }
 
-.header p {
+.header p,
+.panelHeader p,
+.healthyState p {
   margin: 0;
   color: var(--muted);
 }
 
-.cards {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+.eyebrow {
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
-.card {
-  display: grid;
-  gap: 10px;
-  min-height: 124px;
-  padding: 18px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 247, 0.98)),
-    var(--surface);
-  box-shadow: var(--shadow);
-  position: relative;
-  overflow: hidden;
-}
-
-.card::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  height: 4px;
-  background: #8bcf8f;
-}
-
-.cardPrimary {
+.primaryAction {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 0 17px;
+  border-radius: 10px;
   background: var(--accent);
+  color: #ffffff;
+  font-weight: 800;
+  box-shadow: 0 10px 24px rgba(33, 79, 57, 0.18);
+  transition:
+    background 150ms ease,
+    transform 150ms ease;
 }
 
-.cardPrimary::before {
-  background: rgba(255, 255, 255, 0.62);
-}
-
-.cardHealthy::before {
-  background: #49a568;
-}
-
-.cardDanger::before {
-  background: #d94b4b;
-}
-
-.cardWarning::before {
-  background: #e3a12f;
-}
-
-.cardTop {
+.headerActions {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  align-items: center;
+  gap: 9px;
+}
+
+.primaryAction:hover {
+  background: var(--accent-strong);
+}
+
+.primaryAction:active {
+  transform: scale(0.98);
+}
+
+.primaryAction:focus-visible,
+.rowAction:focus-visible,
+.shortcut:focus-visible,
+.headerLink:focus-visible,
+.panelFooterLink:focus-visible {
+  outline: 3px solid rgba(47, 111, 78, 0.2);
+  outline-offset: 3px;
+}
+
+.feedback {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.feedback :global(.p-message) {
+  flex: 1;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
 
-.cardTop i {
-  display: inline-flex;
+.metricCard {
+  display: flex;
+  min-height: 104px;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
-  flex: 0 0 auto;
-  border-radius: 8px;
-  background: #edf8ef;
-  color: var(--accent-strong);
-  font-size: 1rem;
+  gap: 5px;
+  padding: 14px 12px;
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 12px 34px rgba(31, 69, 48, 0.05);
 }
 
-.card span {
+.metricTop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.metricTop > span {
   color: var(--muted);
   font-size: 0.86rem;
-  font-weight: 700;
-  line-height: 1.25;
+  font-weight: 800;
 }
 
-.card strong {
-  font-size: clamp(1.3rem, 1.8vw, 1.85rem);
-  line-height: 1.1;
+.metricTop i {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--accent);
+}
+
+.metricCard > strong {
+  font-size: clamp(1.65rem, 2.4vw, 2.15rem);
+  line-height: 1;
+  letter-spacing: -0.035em;
   overflow-wrap: anywhere;
 }
 
-.card small {
+.metricCard small {
   color: var(--muted);
-  line-height: 1.35;
+  font-size: 0.8rem;
 }
 
-.cardPrimary span,
-.cardPrimary strong,
-.cardPrimary small {
-  color: #f8fff8;
+.metric_primary {
+  border-color: transparent;
+  background: linear-gradient(145deg, #285f44, #214f39);
+  color: #ffffff;
+  box-shadow: 0 16px 38px rgba(33, 79, 57, 0.2);
 }
 
-.cardPrimary .cardTop i {
-  background: rgba(255, 255, 255, 0.2);
+.metric_primary .metricTop > span,
+.metric_primary small {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.metric_primary .metricTop i {
+  background: rgba(255, 255, 255, 0.13);
   color: #ffffff;
 }
 
-.cardDanger {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 246, 246, 0.96)),
-    var(--surface);
+.metric_warning {
+  background: linear-gradient(145deg, #fffdf8, #fff7e8);
 }
 
-.cardWarning {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 249, 237, 0.96)),
-    var(--surface);
+.metric_warning .metricTop i {
+  background: #fff0d3;
+  color: #97620a;
 }
 
-.grid {
+.metric_danger {
+  background: linear-gradient(145deg, #ffffff, #fff7f6);
+}
+
+.metric_danger .metricTop i {
+  background: #ffefed;
+  color: var(--tomato);
+}
+
+.metric_healthy .metricTop i {
+  background: #e9f7ed;
+  color: #28834b;
+}
+
+.metricSkeleton,
+.rowSkeleton {
+  border-radius: 14px;
+  background: linear-gradient(90deg, #edf1ee 25%, #f7f9f8 50%, #edf1ee 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.25s infinite linear;
+}
+
+.metricSkeleton {
+  min-height: 122px;
+}
+
+.mainGrid {
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
-  gap: 20px;
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.55fr);
+  gap: 18px;
+  align-items: start;
 }
 
-.panel,
-.alertPanel {
+.attentionPanel,
+.shortcutsPanel,
+.activityPanel {
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 250, 244, 0.98)),
-    var(--surface);
-  box-shadow: var(--shadow);
-  overflow: hidden;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 16px 44px rgba(31, 69, 48, 0.055);
 }
 
-.panel {
-  padding: 18px;
-  position: relative;
-}
-
-.panel::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  height: 4px;
-  background: var(--accent);
+.attentionPanel,
+.shortcutsPanel {
+  padding: 21px;
 }
 
 .panelHeader {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: 16px;
-  margin-bottom: 18px;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 16px;
 }
 
 .panelHeader h2 {
-  margin: 0;
+  margin: 3px 0 3px;
+  font-size: 1.15rem;
+  letter-spacing: -0.018em;
 }
 
-.inlineLink {
-  color: var(--accent);
-  font-weight: 700;
+.panelHeader p {
+  font-size: 0.84rem;
 }
 
-.alertList {
+.alertCounter {
+  display: inline-grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--warning-soft);
+  color: #8a5a08;
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.alertCounterHealthy {
+  background: #eaf7ed;
+  color: #237343;
+}
+
+.attentionList,
+.activityList,
+.alertSkeletons {
   display: grid;
-  gap: 12px;
 }
 
-.alertItem {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
+.attentionItem {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  padding: 16px 0;
-  border-bottom: 1px solid var(--border);
+  gap: 12px;
+  padding: 13px 0;
+  border-top: 1px solid var(--border);
 }
 
-.alertItem:last-child {
-  border-bottom: 0;
+.attentionIcon,
+.activityIcon {
+  display: inline-grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 11px;
 }
 
-.alertItem p,
-.empty,
-.metaLine {
-  margin: 6px 0 0;
+.attentionWarning {
+  background: var(--warning-soft);
+  color: #92600d;
+}
+
+.attentionDanger {
+  background: var(--danger-soft);
+  color: var(--tomato);
+}
+
+.attentionContent {
+  min-width: 0;
+}
+
+.attentionContent > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.attentionContent strong {
+  overflow: hidden;
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attentionContent p {
+  margin: 3px 0 0;
   color: var(--muted);
+  font-size: 0.78rem;
 }
 
-.metaLine {
-  display: block;
-  font-size: 0.92rem;
+.attentionType,
+.movementTag {
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: var(--warning-soft);
+  color: #835607;
+  font-size: 0.66rem;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
-@media (max-width: 960px) {
-  .cards {
+.attentionTypeDanger {
+  background: var(--danger-soft);
+  color: #a83833;
+}
+
+.rowAction {
+  display: inline-grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 9px;
+  color: var(--accent);
+  transition:
+    background 140ms ease,
+    transform 140ms ease;
+}
+
+.rowAction:hover {
+  background: var(--accent-soft);
+  transform: translateX(2px);
+}
+
+.healthyState {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-height: 110px;
+  padding: 18px;
+  border: 1px solid rgba(47, 111, 78, 0.12);
+  border-radius: 12px;
+  background: #f5fbf7;
+}
+
+.healthyState > span {
+  display: inline-grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  background: #dff2e5;
+  color: #267b47;
+}
+
+.healthyState p {
+  margin-top: 3px;
+  font-size: 0.82rem;
+}
+
+.panelFooterLink,
+.headerLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.panelFooterLink {
+  margin-top: 5px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.shortcuts {
+  display: grid;
+  gap: 8px;
+}
+
+.shortcut {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  padding: 11px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: #ffffff;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+
+.shortcut:hover {
+  border-color: rgba(47, 111, 78, 0.26);
+  box-shadow: 0 8px 22px rgba(31, 69, 48, 0.07);
+  transform: translateY(-1px);
+}
+
+.shortcut > span {
+  display: inline-grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.shortcut > div {
+  display: grid;
+}
+
+.shortcut strong {
+  font-size: 0.84rem;
+}
+
+.shortcut small {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.shortcut > i {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.shortcutPrimary {
+  border-color: transparent;
+  background: var(--accent-strong);
+  color: #ffffff;
+}
+
+.shortcutPrimary > span {
+  background: rgba(255, 255, 255, 0.13);
+  color: #ffffff;
+}
+
+.shortcutPrimary small,
+.shortcutPrimary > i {
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.stockSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 13px 3px 0;
+  border-top: 1px solid var(--border);
+}
+
+.stockSummary div {
+  display: grid;
+}
+
+.stockSummary span {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.stockSummary strong {
+  font-size: 0.95rem;
+}
+
+.stockSummary a {
+  color: var(--accent);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.activityPanel {
+  padding: 20px 21px;
+}
+
+.activityPanel .panelHeader {
+  margin-bottom: 8px;
+}
+
+.activityItem {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto minmax(100px, auto);
+  align-items: center;
+  gap: 14px;
+  padding: 11px 0;
+  border-top: 1px solid var(--border);
+}
+
+.activityIcon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+}
+
+.activityIcon_entry {
+  background: #eaf7ed;
+  color: #267b47;
+}
+
+.activityIcon_sale {
+  background: #e9f2ed;
+  color: var(--accent);
+}
+
+.activityIcon_loss {
+  background: var(--danger-soft);
+  color: var(--tomato);
+}
+
+.activityProduct {
+  display: grid;
+  min-width: 0;
+}
+
+.activityProduct strong {
+  overflow: hidden;
+  font-size: 0.86rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activityProduct span {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.movementTag {
+  background: #e9f2ed;
+  color: var(--accent-strong);
+}
+
+.movementTag_entry {
+  background: #eaf7ed;
+  color: #267b47;
+}
+
+.movementTag_loss {
+  background: var(--danger-soft);
+  color: #a83833;
+}
+
+.activityQuantity {
+  min-width: 100px;
+  font-size: 0.84rem;
+  text-align: right;
+}
+
+.rowSkeleton {
+  min-height: 58px;
+  margin-top: 8px;
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (max-width: 1120px) {
+  .metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
 
-  .grid {
+@media (max-width: 900px) {
+  .mainGrid {
     grid-template-columns: 1fr;
-  }
-
-  .panelHeader,
-  .alertItem {
-    flex-direction: column;
-    align-items: stretch;
   }
 }
 
 @media (max-width: 640px) {
   .page {
-    gap: 18px;
+    gap: 16px;
   }
 
-  .cards {
+  .header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .header p {
+    display: none;
+  }
+
+  .primaryAction {
+    align-self: stretch;
+  }
+
+  .headerActions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .metricCard,
+  .metricSkeleton {
+    min-height: 100px;
+  }
+
+  .metricCard {
+    padding: 12px 9px;
+    border-radius: 12px;
+  }
+
+  .metricCard > strong {
+    font-size: 1.45rem;
+  }
+
+  .metricTop i {
+    width: 26px;
+    height: 26px;
+  }
+
+  .attentionPanel,
+  .shortcutsPanel,
+  .activityPanel {
+    padding: 16px;
+    border-radius: 13px;
+  }
+
+  .attentionContent > div {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .attentionContent p {
+    line-height: 1.35;
+  }
+
+  .panelHeader {
+    align-items: flex-start;
+  }
+
+  .headerLink {
+    font-size: 0;
+  }
+
+  .headerLink i {
+    font-size: 0.8rem;
+  }
+
+  .activityItem {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+
+  .movementTag {
+    grid-column: 2;
+    justify-self: start;
+    margin-top: -6px;
+  }
+
+  .activityQuantity {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+    min-width: auto;
+  }
+
+  .feedback {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 400px) {
+  .metrics {
     grid-template-columns: 1fr;
   }
+}
 
-  .card {
-    min-height: 112px;
-    padding: 16px;
+@media (prefers-reduced-motion: reduce) {
+  .primaryAction,
+  .rowAction,
+  .shortcut {
+    transition: none;
   }
 
-  .card,
-  .panel {
-    padding: 16px;
+  .metricSkeleton,
+  .rowSkeleton {
+    animation: none;
   }
 }

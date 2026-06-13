@@ -15,6 +15,13 @@ export function buscarProdutoPorId(id) {
   return requisitarApi(`/produtos/${id}`);
 }
 
+export function atualizarProduto(id, dadosProduto) {
+  return requisitarApi(`/produtos/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(dadosProduto)
+  });
+}
+
 export function buscarCamadasPorProduto(id) {
   return requisitarApi(`/produtos/${id}/camadas`);
 }
