@@ -34,7 +34,14 @@ def criar_usuario(client, headers, email="validacao.funcional@hortifruti.local",
     return response.get_json()
 
 
-def criar_produto(client, headers, nome="Produto Validacao Funcional", validade_dias=10):
+def criar_produto(
+    client,
+    headers,
+    nome="Produto Validacao Funcional",
+    validade_dias=10,
+    estoque_minimo="5.000",
+    preco_venda="10.00",
+):
     response = post_json(
         client,
         "/api/produtos",
@@ -42,8 +49,8 @@ def criar_produto(client, headers, nome="Produto Validacao Funcional", validade_
             "nome": nome,
             "categoria": "legume",
             "unidade_medida": "kg",
-            "estoque_minimo": "5.000",
-            "preco_venda_padrao": "10.00",
+            "estoque_minimo": estoque_minimo,
+            "preco_venda_padrao": preco_venda,
             "validade_dias_padrao": validade_dias,
         },
         headers=headers,
@@ -278,6 +285,113 @@ def test_fluxo_estoque_venda_fefo_perda_e_relatorios(client, app):
     assert mais_vendidos[0]["total_vendido"] == pytest.approx(5.0)
     assert validade["total_em_risco_custo"] == pytest.approx(102.0)
     assert len(historico) == 4
+
+
+def test_dashboard_inteligente_retorna_prioridades_e_resumo_executivo(client):
+    hoje = date.today()
+    headers = autenticar(client)
+    produto_estoque_baixo = criar_produto(
+        client,
+        headers,
+        nome="Tomate Dashboard",
+        estoque_minimo="5.000",
+        validade_dias=10,
+    )
+    produto_ruptura = criar_produto(
+        client,
+        headers,
+        nome="Banana Dashboard",
+        estoque_minimo="1.000",
+        validade_dias=10,
+        preco_venda="8.00",
+    )
+    produto_vencido = criar_produto(
+        client,
+        headers,
+        nome="Alface Dashboard",
+        estoque_minimo="1.000",
+        validade_dias=1,
+    )
+    produto_parado = criar_produto(
+        client,
+        headers,
+        nome="Batata Dashboard",
+        estoque_minimo="1.000",
+        validade_dias=10,
+    )
+
+    assert registrar_entrada(client, headers, produto_estoque_baixo["id"], "3.000", "4.00", hoje).status_code == 201
+    assert registrar_entrada(client, headers, produto_ruptura["id"], "9.000", "3.00", hoje).status_code == 201
+    assert registrar_entrada(
+        client,
+        headers,
+        produto_vencido["id"],
+        "4.000",
+        "2.50",
+        hoje - timedelta(days=3),
+    ).status_code == 201
+    assert registrar_entrada(client, headers, produto_parado["id"], "8.000", "2.00", hoje).status_code == 201
+    assert registrar_saida(
+        client,
+        headers,
+        produto_ruptura["id"],
+        "7.000",
+        "venda",
+        hoje,
+        preco="8.00",
+    ).status_code == 201
+
+    resposta = client.get(
+        (
+            "/api/relatorios/dashboard-inteligente"
+            f"?dias_previsao=7&dias_validade=3&data_inicial={(hoje - timedelta(days=6)).isoformat()}"
+            f"&data_final={hoje.isoformat()}"
+        ),
+        headers=headers,
+    )
+    dados = resposta.get_json()
+
+    assert resposta.status_code == 200
+    assert set(dados.keys()) == {
+        "periodo_analise",
+        "kpis",
+        "alertas",
+        "sugestoes_reposicao",
+        "produtos_criticos",
+        "produtos_parados",
+        "mais_vendidos",
+        "validade",
+        "resumo_executivo",
+    }
+    assert dados["kpis"]["receita_total"] == pytest.approx(56.0)
+    assert dados["kpis"]["lucro_bruto_total"] == pytest.approx(35.0)
+    assert dados["kpis"]["perdas_total_custo"] == pytest.approx(0.0)
+    assert dados["kpis"]["produtos_vencidos"] == 1
+    assert dados["kpis"]["produtos_estoque_baixo"] >= 1
+    assert dados["kpis"]["total_alertas"] >= 4
+    assert "Banana Dashboard" == dados["mais_vendidos"][0]["produto_nome"]
+
+    alertas = {(alerta["tipo"], alerta["produto_nome"]): alerta for alerta in dados["alertas"]}
+    assert alertas[("produto_vencido", "Alface Dashboard")]["prioridade"] == "alta"
+    assert alertas[("estoque_baixo", "Tomate Dashboard")]["prioridade"] == "alta"
+    assert alertas[("risco_ruptura", "Banana Dashboard")]["prioridade"] == "media"
+    assert any(produto["produto_nome"] == "Batata Dashboard" for produto in dados["produtos_parados"])
+    assert any(produto["produto_nome"] == "Tomate Dashboard" for produto in dados["sugestoes_reposicao"])
+    assert any("alertas" in frase for frase in dados["resumo_executivo"])
+
+
+def test_dashboard_inteligente_exige_jwt_e_valida_parametros(client):
+    headers = autenticar(client)
+    sem_token = client.get("/api/relatorios/dashboard-inteligente")
+    dias_invalidos = client.get("/api/relatorios/dashboard-inteligente?dias_previsao=0", headers=headers)
+    periodo_invalido = client.get(
+        "/api/relatorios/dashboard-inteligente?data_inicial=2026-01-10&data_final=2026-01-01",
+        headers=headers,
+    )
+
+    assert sem_token.status_code == 401
+    assert dias_invalidos.status_code == 400
+    assert periodo_invalido.status_code == 400
 
 
 def test_saidas_invalidas_nao_gravam_movimentacao(client, app):

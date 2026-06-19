@@ -58,7 +58,7 @@ export default function BarraLateral({ aberto, compacto, aoFechar, aoAlternarCom
           <i className="pi pi-sparkles" />
         </span>
         <div className="app-brand-copy">
-          <strong>HortiGestão</strong>
+          <strong>Hortifruti</strong>
           <p>Estoque & vendas</p>
         </div>
       </div>

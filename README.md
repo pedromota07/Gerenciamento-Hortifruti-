@@ -17,7 +17,7 @@ O projeto é dividido em dois módulos:
 - Saídas por venda ou perda.
 - Consumo de estoque por FEFO, priorizando os lotes com menor validade.
 - Bloqueio de movimentações inválidas, como produto inativo, estoque insuficiente ou saída sobre lote vencido.
-- Dashboard com indicadores operacionais.
+- Dashboard Orientado à Decisão, com KPIs, alertas priorizados, recomendações de reposição, risco de validade e resumo executivo automático.
 - Tela de PDV para registrar vendas.
 - Relatórios de produtos mais vendidos, movimentações, validade e resultado financeiro.
 - Scripts para popular ou reiniciar a base de demonstração.
@@ -232,6 +232,27 @@ exigem que o usuário autenticado tenha perfil de gerente.
 | Mais vendidos | `GET /api/relatorios/mais-vendidos` |
 | Financeiro | `GET /api/relatorios/financeiro` |
 | Validade | `GET /api/relatorios/validade` |
+| Dashboard inteligente | `GET /api/relatorios/dashboard-inteligente` |
+
+### Dashboard Orientado à Decisão
+
+O endpoint `GET /api/relatorios/dashboard-inteligente` consolida regras de negócio para apoiar decisões diárias da operação. Ele exige JWT como os demais relatórios e retorna:
+
+- KPIs financeiros e operacionais.
+- Alertas priorizados por severidade.
+- Sugestões de reposição baseadas em giro e estoque disponível.
+- Produtos vencidos ou próximos do vencimento.
+- Produtos parados ou com baixo giro.
+- Resumo executivo com frases automáticas para orientar a ação.
+
+Parâmetros opcionais:
+
+| Parâmetro | Descrição | Padrão |
+| --- | --- | --- |
+| `dias_previsao` | Janela usada para previsão de giro e período padrão de análise. | `7` |
+| `dias_validade` | Dias considerados para alerta de vencimento próximo. | `3` |
+| `data_inicial` | Início do período de análise no formato `YYYY-MM-DD`. | últimos `dias_previsao` dias |
+| `data_final` | Fim do período de análise no formato `YYYY-MM-DD`. | data atual |
 
 ## Testes
 

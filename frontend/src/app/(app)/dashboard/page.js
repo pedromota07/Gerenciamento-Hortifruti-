@@ -7,88 +7,82 @@ import { Message } from "primereact/message";
 
 import EstadoVazio from "@/components/EstadoVazio";
 import ProdutoVisual from "@/components/ProdutoVisual";
-import { buscarProdutos } from "@/services/servicoProdutos";
-import { buscarFinanceiro, buscarHistoricoGeral, buscarValidade } from "@/services/servicoRelatorios";
-import { formatarData, formatarMoeda, formatarQuantidadeComUnidade } from "@/utils/formatters";
-import { estoqueEstaBaixo } from "@/utils/produtos";
+import { buscarDashboardInteligente } from "@/services/servicoRelatorios";
+import { formatarData, formatarMoeda, formatarQuantidade, formatarQuantidadeComUnidade } from "@/utils/formatters";
 
 import styles from "./page.module.css";
 
-function obterContextoDoDia() {
-  const agora = new Date();
-  const hora = agora.getHours();
-  const saudacao = hora < 12 ? "Bom dia" : hora < 18 ? "Boa tarde" : "Boa noite";
-  const data = agora.toLocaleDateString("pt-BR", {
-    weekday: "long",
-    day: "2-digit",
-    month: "long"
+const ITENS_POR_PAGINA_ALERTAS = 8;
+const ITENS_POR_PAGINA_VALIDADE = 5;
+const LIMITE_LISTA_RESUMIDA = 5;
+
+function formatarPercentual(valor) {
+  return `${formatarQuantidade(valor)}%`;
+}
+
+function formatarGiroMedio(valor, unidadeMedida) {
+  const quantidade = Number(valor ?? 0).toLocaleString("pt-BR", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1
   });
 
-  return { saudacao, data };
+  return unidadeMedida ? `${quantidade} ${unidadeMedida}` : quantidade;
 }
 
-function obterRotuloMovimentacao(movimentacao) {
-  if (movimentacao.tipo === "entrada") {
-    return "Entrada";
-  }
-
-  if (movimentacao.subtipo === "venda") {
-    return "Venda";
-  }
-
-  if (movimentacao.subtipo === "perda") {
-    return "Perda";
-  }
-
-  return "Saída";
+function obterRotuloPrioridade(prioridade) {
+  return {
+    alta: "Alta",
+    media: "Média",
+    baixa: "Baixa"
+  }[prioridade] ?? "Baixa";
 }
 
-function obterTomMovimentacao(movimentacao) {
-  if (movimentacao.tipo === "entrada") {
-    return "entry";
+function obterClassePrioridade(prioridade) {
+  return {
+    alta: styles.prioridadeAlta,
+    media: styles.prioridadeMedia,
+    baixa: styles.prioridadeBaixa
+  }[prioridade] ?? styles.prioridadeBaixa;
+}
+
+function obterDestinoAcao(alerta) {
+  if (alerta?.acao_sugerida === "Repor estoque" || alerta?.tipo === "estoque_baixo") {
+    return "/estoque";
   }
 
-  if (movimentacao.subtipo === "perda") {
-    return "loss";
+  if (alerta?.tipo === "produto_vencido" || alerta?.tipo === "proximo_vencimento") {
+    return "/relatorios";
   }
 
-  return "sale";
+  return alerta?.produto_id ? `/produtos/${alerta.produto_id}` : "/relatorios";
+}
+
+function SecaoVazia({ icone, titulo, descricao }) {
+  return (
+    <EstadoVazio
+      icone={icone}
+      titulo={titulo}
+      descricao={descricao}
+    />
+  );
 }
 
 export default function PaginaPainel() {
-  const [produtos, setProdutos] = useState([]);
-  const [movimentacoes, setMovimentacoes] = useState([]);
-  const [vendasHoje, setVendasHoje] = useState([]);
-  const [financeiro, setFinanceiro] = useState(null);
-  const [validade, setValidade] = useState(null);
+  const [dashboard, setDashboard] = useState(null);
   const [carregando, setCarregando] = useState(true);
   const [mensagem, setMensagem] = useState(null);
+  const [paginaAlertas, setPaginaAlertas] = useState(0);
+  const [paginaValidade, setPaginaValidade] = useState(0);
 
   const carregarPainel = useCallback(async () => {
     setCarregando(true);
     setMensagem(null);
+    setPaginaAlertas(0);
+    setPaginaValidade(0);
 
     try {
-      const hoje = new Date().toLocaleDateString("en-CA");
-      const [dadosProdutos, dadosMovimentacoes, dadosVendasHoje, dadosFinanceiro, dadosValidade] =
-        await Promise.all([
-          buscarProdutos(),
-          buscarHistoricoGeral({ limite: 10 }),
-          buscarHistoricoGeral({
-            tipo: "saida",
-            subtipo: "venda",
-            data_inicial: hoje,
-            data_final: hoje
-          }),
-          buscarFinanceiro(),
-          buscarValidade(3)
-        ]);
-
-      setProdutos(dadosProdutos);
-      setMovimentacoes(dadosMovimentacoes);
-      setVendasHoje(dadosVendasHoje);
-      setFinanceiro(dadosFinanceiro);
-      setValidade(dadosValidade);
+      const dados = await buscarDashboardInteligente();
+      setDashboard(dados);
     } catch (erro) {
       setMensagem({ severity: "error", text: erro.message });
     } finally {
@@ -100,60 +94,99 @@ export default function PaginaPainel() {
     carregarPainel();
   }, [carregarPainel]);
 
-  const contexto = useMemo(obterContextoDoDia, []);
-  const produtosAtivos = useMemo(() => produtos.filter((produto) => produto.ativo), [produtos]);
-  const produtosEmAlerta = useMemo(
-    () => produtosAtivos.filter((produto) => estoqueEstaBaixo(produto)),
-    [produtosAtivos]
-  );
-  const receitaHoje = useMemo(
-    () => vendasHoje.reduce((total, venda) => total + Number(venda.receita_total ?? 0), 0),
-    [vendasHoje]
-  );
-
-  const vencidos = validade?.vencidos ?? [];
-  const proximosDoVencimento = validade?.proximos_vencimento ?? [];
-  const totalAlertas = produtosEmAlerta.length + vencidos.length + proximosDoVencimento.length;
-
-  const indicadores = [
-    {
-      rotulo: "Receita hoje",
-      valor: formatarMoeda(receitaHoje),
-      detalhe: `${vendasHoje.length} ${vendasHoje.length === 1 ? "venda registrada" : "vendas registradas"}`,
-      icone: "pi pi-wallet",
-      tom: "primary"
-    },
-    {
-      rotulo: "Estoque em risco",
-      valor: totalAlertas,
-      detalhe: totalAlertas === 0 ? "Operação sem alertas" : "Itens que precisam de atenção",
-      icone: "pi pi-exclamation-triangle",
-      tom: totalAlertas > 0 ? "warning" : "healthy"
-    },
-    {
-      rotulo: "Perdas acumuladas",
-      valor: formatarMoeda(financeiro?.perdas_total_custo),
-      detalhe: `${financeiro?.perdas_total_registros ?? 0} registros de perda`,
-      icone: "pi pi-arrow-down-right",
-      tom: "danger"
-    },
-    {
-      rotulo: "Valor em estoque",
-      valor: formatarMoeda(financeiro?.valor_estoque_custo),
-      detalhe: `${produtosAtivos.length} produtos ativos`,
-      icone: "pi pi-box",
-      tom: "neutral"
-    }
+  const kpis = dashboard?.kpis ?? {};
+  const resumoExecutivo = dashboard?.resumo_executivo ?? [];
+  const alertas = dashboard?.alertas ?? [];
+  const sugestoesReposicao = dashboard?.sugestoes_reposicao ?? [];
+  const produtosParados = dashboard?.produtos_parados ?? [];
+  const maisVendidos = dashboard?.mais_vendidos ?? [];
+  const validade = dashboard?.validade ?? {};
+  const vencidos = validade.vencidos ?? [];
+  const proximosVencimento = validade.proximos_vencimento ?? [];
+  const totalPaginasAlertas = Math.max(Math.ceil(alertas.length / ITENS_POR_PAGINA_ALERTAS), 1);
+  const indiceInicialAlertas = paginaAlertas * ITENS_POR_PAGINA_ALERTAS;
+  const alertasVisiveis = alertas.slice(indiceInicialAlertas, indiceInicialAlertas + ITENS_POR_PAGINA_ALERTAS);
+  const riscosValidade = [
+    ...vencidos.map((produto) => ({
+      ...produto,
+      chave: `vencido-${produto.produto_id}`,
+      rotulo: "Vencido",
+      classePrioridade: styles.prioridadeAlta,
+      detalhe: formatarQuantidadeComUnidade(produto.quantidade_total, produto.unidade_medida)
+    })),
+    ...proximosVencimento.map((produto) => ({
+      ...produto,
+      chave: `proximo-${produto.produto_id}`,
+      rotulo: "Próximo",
+      classePrioridade: styles.prioridadeMedia,
+      detalhe: `Validade: ${formatarData(produto.proxima_validade)}`
+    }))
   ];
+  const totalPaginasValidade = Math.max(Math.ceil(riscosValidade.length / ITENS_POR_PAGINA_VALIDADE), 1);
+  const indiceInicialValidade = paginaValidade * ITENS_POR_PAGINA_VALIDADE;
+  const riscosValidadeVisiveis = riscosValidade.slice(
+    indiceInicialValidade,
+    indiceInicialValidade + ITENS_POR_PAGINA_VALIDADE
+  );
+  const produtosParadosVisiveis = produtosParados.slice(0, LIMITE_LISTA_RESUMIDA);
+
+  const indicadores = useMemo(
+    () => [
+      {
+        rotulo: "Receita",
+        valor: formatarMoeda(kpis.receita_total),
+        detalhe: "Período analisado",
+        icone: "pi pi-wallet",
+        tom: "primary"
+      },
+      {
+        rotulo: "Lucro bruto",
+        valor: formatarMoeda(kpis.lucro_bruto_total),
+        detalhe: "Resultado antes das despesas",
+        icone: "pi pi-chart-line",
+        tom: "healthy"
+      },
+      {
+        rotulo: "Margem",
+        valor: formatarPercentual(kpis.margem_lucro_percentual),
+        detalhe: "Lucro sobre receita",
+        icone: "pi pi-percentage",
+        tom: "neutral"
+      },
+      {
+        rotulo: "Valor em estoque",
+        valor: formatarMoeda(kpis.valor_estoque_custo),
+        detalhe: "Estoque a custo",
+        icone: "pi pi-box",
+        tom: "neutral"
+      },
+      {
+        rotulo: "Perdas",
+        valor: formatarMoeda(kpis.perdas_total_custo),
+        detalhe: `${kpis.produtos_vencidos ?? 0} produtos vencidos`,
+        icone: "pi pi-arrow-down-right",
+        tom: "danger"
+      },
+      {
+        rotulo: "Alertas",
+        valor: kpis.total_alertas ?? 0,
+        detalhe: "Prioridades calculadas",
+        icone: "pi pi-exclamation-triangle",
+        tom: (kpis.total_alertas ?? 0) > 0 ? "warning" : "healthy"
+      }
+    ],
+    [kpis]
+  );
 
   return (
     <section className={styles.page}>
       <header className={styles.header}>
         <div>
-          <span className={styles.eyebrow}>{contexto.data}</span>
-          <h1>{contexto.saudacao}, acompanhe sua operação.</h1>
-          <p>Veja primeiro o que exige ação e siga para os detalhes quando necessário.</p>
+          <span className={styles.eyebrow}>Regras + insights</span>
+          <h1>Dashboard Orientado à Decisão</h1>
+          <p>Prioridades, riscos e recomendações automáticas da operação.</p>
         </div>
+
         <div className={styles.headerActions}>
           <Button
             label="Atualizar"
@@ -176,9 +209,9 @@ export default function PaginaPainel() {
         </div>
       ) : null}
 
-      <section className={styles.metrics} aria-label="Resumo da operação" aria-live="polite">
+      <section className={styles.metrics} aria-label="Indicadores principais" aria-live="polite">
         {carregando
-          ? Array.from({ length: 4 }, (_, indice) => <div className={styles.metricSkeleton} key={indice} />)
+          ? Array.from({ length: 6 }, (_, indice) => <div className={styles.metricSkeleton} key={indice} />)
           : indicadores.map((indicador) => (
               <article className={`${styles.metricCard} ${styles[`metric_${indicador.tom}`]}`} key={indicador.rotulo}>
                 <div className={styles.metricTop}>
@@ -191,210 +224,277 @@ export default function PaginaPainel() {
             ))}
       </section>
 
+      <section className={styles.executivePanel}>
+        <div className={styles.panelHeader}>
+          <div>
+            <span className={styles.eyebrow}>Resumo executivo</span>
+            <h2>O que fazer agora</h2>
+            <p>Frases automáticas geradas a partir das regras de estoque, giro e validade.</p>
+          </div>
+        </div>
+
+        {carregando ? (
+          <div className={styles.summarySkeletons}>
+            {Array.from({ length: 3 }, (_, indice) => <div className={styles.rowSkeleton} key={indice} />)}
+          </div>
+        ) : (
+          <ul className={styles.summaryList}>
+            {resumoExecutivo.map((frase) => (
+              <li key={frase}>
+                <i className="pi pi-check-circle" aria-hidden="true" />
+                <span>{frase}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
       <div className={styles.mainGrid}>
         <section className={styles.attentionPanel}>
           <div className={styles.panelHeader}>
             <div>
-              <span className={styles.eyebrow}>Prioridade do dia</span>
-              <h2>Precisa de atenção</h2>
-              <p>Alertas que podem afetar vendas, validade ou reposição.</p>
+              <span className={styles.eyebrow}>Prioridades de hoje</span>
+              <h2>Alertas priorizados</h2>
+              <p>Itens ordenados por impacto operacional.</p>
             </div>
             {!carregando ? (
-              <span className={`${styles.alertCounter} ${totalAlertas === 0 ? styles.alertCounterHealthy : ""}`}>
-                {totalAlertas}
+              <span className={`${styles.alertCounter} ${alertas.length === 0 ? styles.alertCounterHealthy : ""}`}>
+                {alertas.length}
               </span>
             ) : null}
           </div>
 
           {carregando ? (
             <div className={styles.alertSkeletons}>
+              {Array.from({ length: 4 }, (_, indice) => <div className={styles.rowSkeleton} key={indice} />)}
+            </div>
+          ) : alertas.length === 0 ? (
+            <SecaoVazia
+              icone="pi pi-check"
+              titulo="Nenhuma prioridade para resolver agora."
+              descricao="O painel não encontrou alertas críticos no período analisado."
+            />
+          ) : (
+            <>
+              <div className={styles.decisionList}>
+                {alertasVisiveis.map((alerta, indice) => (
+                  <article className={styles.decisionItem} key={`${alerta.tipo}-${alerta.produto_id}-${indice}`}>
+                    <ProdutoVisual nome={alerta.produto_nome} categoria={alerta.categoria} />
+                    <div className={styles.decisionContent}>
+                      <div>
+                        <strong>{alerta.produto_nome}</strong>
+                        <span className={`${styles.priorityTag} ${obterClassePrioridade(alerta.prioridade)}`}>
+                          {obterRotuloPrioridade(alerta.prioridade)}
+                        </span>
+                      </div>
+                      <p>{alerta.mensagem}</p>
+                      <small>{alerta.acao_sugerida}</small>
+                    </div>
+                    <Link className={styles.rowAction} href={obterDestinoAcao(alerta)} aria-label={`Abrir ${alerta.produto_nome}`}>
+                      <i className="pi pi-arrow-right" aria-hidden="true" />
+                    </Link>
+                  </article>
+                ))}
+              </div>
+
+              {alertas.length > ITENS_POR_PAGINA_ALERTAS ? (
+                <div className={styles.listFooter}>
+                  <span>
+                    Mostrando {indiceInicialAlertas + 1}-{indiceInicialAlertas + alertasVisiveis.length} de {alertas.length}
+                  </span>
+                  <div className={styles.carouselControls} aria-label="Paginação dos alertas">
+                    <Button
+                      icon="pi pi-angle-left"
+                      text
+                      rounded
+                      disabled={paginaAlertas === 0}
+                      aria-label="Página anterior de alertas"
+                      onClick={() => setPaginaAlertas((paginaAtual) => Math.max(paginaAtual - 1, 0))}
+                    />
+                    <strong>{paginaAlertas + 1} / {totalPaginasAlertas}</strong>
+                    <Button
+                      icon="pi pi-angle-right"
+                      text
+                      rounded
+                      disabled={paginaAlertas >= totalPaginasAlertas - 1}
+                      aria-label="Próxima página de alertas"
+                      onClick={() => setPaginaAlertas((paginaAtual) => Math.min(paginaAtual + 1, totalPaginasAlertas - 1))}
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </>
+          )}
+        </section>
+
+        <section className={styles.recommendationPanel}>
+          <div className={styles.panelHeader}>
+            <div>
+              <span className={styles.eyebrow}>Sugestões de reposição</span>
+              <h2>Comprar com prioridade</h2>
+              <p>Baseado em giro médio e dias estimados até acabar.</p>
+            </div>
+          </div>
+
+          {carregando ? (
+            <div className={styles.alertSkeletons}>
               {Array.from({ length: 3 }, (_, indice) => <div className={styles.rowSkeleton} key={indice} />)}
             </div>
-          ) : totalAlertas === 0 ? (
-            <div className={styles.healthyState}>
-              <span>
-                <i className="pi pi-check" aria-hidden="true" />
-              </span>
-              <div>
-                <strong>Operação sob controle</strong>
-                <p>Não há alertas de estoque ou validade para resolver agora.</p>
-              </div>
-            </div>
+          ) : sugestoesReposicao.length === 0 ? (
+            <SecaoVazia
+              icone="pi pi-shopping-bag"
+              titulo="Nenhuma reposição sugerida."
+              descricao="O estoque atual cobre a previsão de venda dos próximos dias."
+            />
           ) : (
-            <div className={styles.attentionList}>
-              {produtosEmAlerta.slice(0, 4).map((produto) => (
-                <article className={styles.attentionItem} key={`estoque-${produto.id}`}>
-                  <ProdutoVisual nome={produto.nome} categoria={produto.categoria} />
-                  <div className={styles.attentionContent}>
-                    <div>
-                      <strong>{produto.nome}</strong>
-                      <span className={styles.attentionType}>Estoque baixo</span>
-                    </div>
-                    <p>
-                      {formatarQuantidadeComUnidade(
-                        produto.quantidade_disponivel_venda,
-                        produto.unidade_medida
-                      )}{" "}
-                      disponíveis. Mínimo de{" "}
-                      {formatarQuantidadeComUnidade(produto.estoque_minimo, produto.unidade_medida)}.
-                    </p>
+            <div className={styles.repositionList}>
+              {sugestoesReposicao.slice(0, 5).map((produto) => (
+                <article className={styles.repositionItem} key={produto.produto_id}>
+                  <div>
+                    <strong>{produto.produto_nome}</strong>
+                    <span className={`${styles.priorityTag} ${obterClassePrioridade(produto.prioridade)}`}>
+                      {obterRotuloPrioridade(produto.prioridade)}
+                    </span>
                   </div>
-                  <Link className={styles.rowAction} href={`/produtos/${produto.id}`} aria-label={`Ver ${produto.nome}`}>
-                    <i className="pi pi-arrow-right" aria-hidden="true" />
-                  </Link>
-                </article>
-              ))}
-
-              {vencidos.slice(0, 3).map((produto) => (
-                <article className={styles.attentionItem} key={`vencido-${produto.produto_id}`}>
-                  <ProdutoVisual nome={produto.produto_nome} categoria={produto.categoria} />
-                  <div className={styles.attentionContent}>
-                    <div>
-                      <strong>{produto.produto_nome}</strong>
-                      <span className={`${styles.attentionType} ${styles.attentionTypeDanger}`}>Vencido</span>
-                    </div>
-                    <p>
-                      {formatarQuantidadeComUnidade(produto.quantidade_total, produto.unidade_medida)} fora da
-                      validade.
-                    </p>
-                  </div>
-                  <Link className={styles.rowAction} href="/relatorios" aria-label="Abrir relatório de validade">
-                    <i className="pi pi-arrow-right" aria-hidden="true" />
-                  </Link>
-                </article>
-              ))}
-
-              {proximosDoVencimento.slice(0, 3).map((produto) => (
-                <article className={styles.attentionItem} key={`validade-${produto.produto_id}`}>
-                  <ProdutoVisual nome={produto.produto_nome} categoria={produto.categoria} />
-                  <div className={styles.attentionContent}>
-                    <div>
-                      <strong>{produto.produto_nome}</strong>
-                      <span className={styles.attentionType}>Vence em breve</span>
-                    </div>
-                    <p>Validade mais próxima em {formatarData(produto.proxima_validade)}.</p>
-                  </div>
-                  <Link className={styles.rowAction} href="/relatorios" aria-label="Abrir relatório de validade">
-                    <i className="pi pi-arrow-right" aria-hidden="true" />
-                  </Link>
+                  <p>
+                    Sugerido: {formatarQuantidadeComUnidade(produto.quantidade_sugerida, produto.unidade_medida)}
+                  </p>
+                  <small>
+                    Giro médio: {formatarGiroMedio(produto.media_venda_diaria, produto.unidade_medida)}/dia
+                  </small>
                 </article>
               ))}
             </div>
           )}
-
-          {totalAlertas > 0 && !carregando ? (
-            <Link className={styles.panelFooterLink} href="/relatorios">
-              Ver todos os {totalAlertas} alertas
-              <i className="pi pi-arrow-right" aria-hidden="true" />
-            </Link>
-          ) : null}
         </section>
-
-        <aside className={styles.shortcutsPanel}>
-          <div className={styles.panelHeader}>
-            <div>
-              <span className={styles.eyebrow}>Acesso rápido</span>
-              <h2>Atalhos operacionais</h2>
-              <p>Continue o trabalho pelas ações mais usadas.</p>
-            </div>
-          </div>
-
-          <nav className={styles.shortcuts} aria-label="Atalhos operacionais">
-            <Link className={`${styles.shortcut} ${styles.shortcutPrimary}`} href="/pdv">
-              <span>
-                <i className="pi pi-shopping-cart" aria-hidden="true" />
-              </span>
-              <div>
-                <strong>Registrar venda</strong>
-                <small>Abrir o caixa rápido</small>
-              </div>
-              <i className="pi pi-arrow-right" aria-hidden="true" />
-            </Link>
-
-            <Link className={styles.shortcut} href="/estoque">
-              <span>
-                <i className="pi pi-plus-circle" aria-hidden="true" />
-              </span>
-              <div>
-                <strong>Movimentar estoque</strong>
-                <small>Entrada, saída ou perda</small>
-              </div>
-              <i className="pi pi-arrow-right" aria-hidden="true" />
-            </Link>
-
-            <Link className={styles.shortcut} href="/relatorios">
-              <span>
-                <i className="pi pi-chart-bar" aria-hidden="true" />
-              </span>
-              <div>
-                <strong>Consultar resultados</strong>
-                <small>Financeiro e validade</small>
-              </div>
-              <i className="pi pi-arrow-right" aria-hidden="true" />
-            </Link>
-          </nav>
-
-          <div className={styles.stockSummary}>
-            <div>
-              <span>Estoque a custo</span>
-              <strong>{carregando ? "--" : formatarMoeda(financeiro?.valor_estoque_custo)}</strong>
-            </div>
-            <Link href="/estoque">Ver estoque</Link>
-          </div>
-        </aside>
       </div>
 
-      <section className={styles.activityPanel}>
-        <div className={styles.panelHeader}>
-          <div>
-            <span className={styles.eyebrow}>Visão recente</span>
-            <h2>Atividade da operação</h2>
-            <p>As dez movimentações mais recentes do estoque.</p>
+      <div className={styles.secondaryGrid}>
+        <section className={styles.infoPanel}>
+          <div className={styles.panelHeader}>
+            <div>
+              <span className={styles.eyebrow}>Risco de validade</span>
+              <h2>Vencidos e próximos</h2>
+              <p>Produtos que podem virar perda se nada for feito.</p>
+            </div>
           </div>
-          <Link className={styles.headerLink} href="/relatorios">
-            Ver histórico
-            <i className="pi pi-arrow-right" aria-hidden="true" />
-          </Link>
-        </div>
 
-        {carregando ? (
-          <div className={styles.activityList}>
-            {Array.from({ length: 4 }, (_, indice) => <div className={styles.rowSkeleton} key={indice} />)}
-          </div>
-        ) : movimentacoes.length === 0 ? (
-          <EstadoVazio
-            icone="pi pi-sync"
-            titulo="Nenhuma movimentação registrada ainda."
-            descricao="Entradas, vendas e perdas aparecerão aqui conforme o estoque começar a operar."
-          />
-        ) : (
-          <div className={styles.activityList}>
-            {movimentacoes.map((movimentacao) => {
-              const tom = obterTomMovimentacao(movimentacao);
+          {carregando ? (
+            <div className={styles.alertSkeletons}>
+              {Array.from({ length: 3 }, (_, indice) => <div className={styles.rowSkeleton} key={indice} />)}
+            </div>
+          ) : vencidos.length === 0 && proximosVencimento.length === 0 ? (
+            <SecaoVazia
+              icone="pi pi-calendar"
+              titulo="Nenhum risco de validade."
+              descricao="Não há produtos vencidos ou próximos do vencimento."
+            />
+          ) : (
+            <>
+              <div className={styles.compactList}>
+                {riscosValidadeVisiveis.map((produto) => (
+                  <article className={styles.compactItem} key={produto.chave}>
+                    <strong>{produto.produto_nome}</strong>
+                    <span className={`${styles.priorityTag} ${produto.classePrioridade}`}>{produto.rotulo}</span>
+                    <small>{produto.detalhe}</small>
+                  </article>
+                ))}
+              </div>
 
-              return (
-                <article className={styles.activityItem} key={movimentacao.id}>
-                  <ProdutoVisual
-                    nome={movimentacao.produto_nome}
-                    categoria={movimentacao.categoria}
-                    tamanho="compacto"
-                  />
-                  <div className={styles.activityProduct}>
-                    <strong>{movimentacao.produto_nome}</strong>
-                    <span>{formatarData(movimentacao.data)}</span>
-                  </div>
-                  <span className={`${styles.movementTag} ${styles[`movementTag_${tom}`]}`}>
-                    {obterRotuloMovimentacao(movimentacao)}
+              {riscosValidade.length > ITENS_POR_PAGINA_VALIDADE ? (
+                <div className={styles.listFooter}>
+                  <span>
+                    Mostrando {indiceInicialValidade + 1}-{indiceInicialValidade + riscosValidadeVisiveis.length} de {riscosValidade.length}
                   </span>
-                  <strong className={styles.activityQuantity}>
-                    {formatarQuantidadeComUnidade(movimentacao.quantidade, movimentacao.unidade_medida)}
-                  </strong>
-                </article>
-              );
-            })}
+                  <div className={styles.carouselControls} aria-label="Paginação dos riscos de validade">
+                    <Button
+                      icon="pi pi-angle-left"
+                      text
+                      rounded
+                      disabled={paginaValidade === 0}
+                      aria-label="Página anterior de validade"
+                      onClick={() => setPaginaValidade((paginaAtual) => Math.max(paginaAtual - 1, 0))}
+                    />
+                    <strong>{paginaValidade + 1} / {totalPaginasValidade}</strong>
+                    <Button
+                      icon="pi pi-angle-right"
+                      text
+                      rounded
+                      disabled={paginaValidade >= totalPaginasValidade - 1}
+                      aria-label="Próxima página de validade"
+                      onClick={() => setPaginaValidade((paginaAtual) => Math.min(paginaAtual + 1, totalPaginasValidade - 1))}
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </>
+          )}
+        </section>
+
+        <section className={styles.infoPanel}>
+          <div className={styles.panelHeader}>
+            <div>
+              <span className={styles.eyebrow}>Produtos parados</span>
+              <h2>Baixo giro</h2>
+              <p>Itens com estoque e sem venda no período.</p>
+            </div>
           </div>
-        )}
-      </section>
+
+          {carregando ? (
+            <div className={styles.alertSkeletons}>
+              {Array.from({ length: 3 }, (_, indice) => <div className={styles.rowSkeleton} key={indice} />)}
+            </div>
+          ) : produtosParados.length === 0 ? (
+            <SecaoVazia
+              icone="pi pi-clock"
+              titulo="Nenhum produto parado."
+              descricao="Todos os itens com estoque tiveram giro recente."
+            />
+          ) : (
+            <div className={styles.compactList}>
+              {produtosParadosVisiveis.map((produto) => (
+                <article className={styles.compactItem} key={produto.produto_id}>
+                  <strong>{produto.produto_nome}</strong>
+                  <span>{formatarQuantidadeComUnidade(produto.estoque_atual, produto.unidade_medida)}</span>
+                  <small>{formatarMoeda(produto.valor_estoque_custo)} parado</small>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className={styles.infoPanel}>
+          <div className={styles.panelHeader}>
+            <div>
+              <span className={styles.eyebrow}>Mais vendidos</span>
+              <h2>Produtos com maior giro</h2>
+              <p>Top 5 calculado pelas vendas disponíveis.</p>
+            </div>
+          </div>
+
+          {carregando ? (
+            <div className={styles.alertSkeletons}>
+              {Array.from({ length: 3 }, (_, indice) => <div className={styles.rowSkeleton} key={indice} />)}
+            </div>
+          ) : maisVendidos.length === 0 ? (
+            <SecaoVazia
+              icone="pi pi-chart-bar"
+              titulo="Nenhuma venda no período."
+              descricao="Os produtos mais vendidos aparecerão aqui conforme o PDV for usado."
+            />
+          ) : (
+            <div className={styles.compactList}>
+              {maisVendidos.map((produto, indice) => (
+                <article className={styles.compactItem} key={produto.produto_id}>
+                  <strong>{indice + 1}. {produto.produto_nome}</strong>
+                  <span>{formatarQuantidadeComUnidade(produto.total_vendido, produto.unidade_medida)}</span>
+                  <small>{formatarMoeda(produto.receita_total)} em receita</small>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
     </section>
   );
 }

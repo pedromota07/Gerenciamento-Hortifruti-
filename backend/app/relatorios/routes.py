@@ -44,3 +44,30 @@ def get_validade():
         return json_error(exc.messages, 400)
 
     return jsonify(RelatorioService(db.session).validade(dias)), 200
+
+
+@relatorios_bp.get("/dashboard-inteligente")
+@usuario_ativo_required
+def get_dashboard_inteligente():
+    try:
+        dias_previsao = parse_optional_positive_int_arg(request.args, "dias_previsao") or 7
+        dias_validade = parse_optional_positive_int_arg(request.args, "dias_validade") or 3
+        data_inicial = parse_optional_date_arg(request.args, "data_inicial")
+        data_final = parse_optional_date_arg(request.args, "data_final")
+    except ValidationError as exc:
+        return json_error(exc.messages, 400)
+
+    if data_inicial is not None and data_final is not None and data_inicial > data_final:
+        return json_error({"data_inicial": ["Deve ser menor ou igual a data_final."]}, 400)
+
+    return (
+        jsonify(
+            RelatorioService(db.session).dashboard_inteligente(
+                dias_previsao=dias_previsao,
+                dias_validade=dias_validade,
+                data_inicial=data_inicial,
+                data_final=data_final,
+            )
+        ),
+        200,
+    )

@@ -35,3 +35,11 @@ export function buscarFinanceiro(filtros = {}) {
 export function buscarValidade(dias = 3) {
   return requisitarApi(`/relatorios/validade?dias=${dias}`);
 }
+
+export function buscarDashboardInteligente(filtros = {}) {
+  const consulta = montarConsulta(filtros);
+
+  return requisitarApi(
+    consulta ? `/relatorios/dashboard-inteligente?${consulta}` : "/relatorios/dashboard-inteligente"
+  );
+}
