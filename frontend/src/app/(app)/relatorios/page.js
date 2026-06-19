@@ -8,9 +8,11 @@ import { Dropdown } from "primereact/dropdown";
 import { InputNumber } from "primereact/inputnumber";
 import { InputText } from "primereact/inputtext";
 import { Message } from "primereact/message";
+import { Tag } from "primereact/tag";
 import { Toast } from "primereact/toast";
 
 import EstadoVazio from "@/components/EstadoVazio";
+import ProdutoVisual from "@/components/ProdutoVisual";
 import { buscarProdutos } from "@/services/servicoProdutos";
 import {
   buscarFinanceiro,
@@ -34,6 +36,31 @@ function montarFiltrosPeriodo(filtros) {
   return {
     data_inicial: filtros.data_inicial,
     data_final: filtros.data_final
+  };
+}
+
+function formatarDataIso(data) {
+  const ano = data.getFullYear();
+  const mes = String(data.getMonth() + 1).padStart(2, "0");
+  const dia = String(data.getDate()).padStart(2, "0");
+  return `${ano}-${mes}-${dia}`;
+}
+
+function obterPeriodoRapido(tipo) {
+  const hoje = new Date();
+  const inicio = new Date(hoje);
+
+  if (tipo === "7d") {
+    inicio.setDate(hoje.getDate() - 6);
+  } else if (tipo === "30d") {
+    inicio.setDate(hoje.getDate() - 29);
+  } else if (tipo === "mes") {
+    inicio.setDate(1);
+  }
+
+  return {
+    data_inicial: formatarDataIso(inicio),
+    data_final: formatarDataIso(hoje)
   };
 }
 
@@ -74,6 +101,7 @@ export default function PaginaRelatorios() {
   const [validade, setValidade] = useState(null);
   const [carregando, setCarregando] = useState(true);
   const [mensagem, setMensagem] = useState(null);
+  const [filtrosVisiveis, setFiltrosVisiveis] = useState(true);
 
   const carregarDados = useCallback(async (filtrosAtuais) => {
     setCarregando(true);
@@ -111,22 +139,61 @@ export default function PaginaRelatorios() {
     carregarDados(FILTROS_INICIAIS);
   }, [carregarDados]);
 
+  useEffect(() => {
+    if (window.matchMedia("(max-width: 680px)").matches) {
+      setFiltrosVisiveis(false);
+    }
+  }, []);
+
   const opcoesProdutos = useMemo(
     () => produtos.map((produto) => ({ label: produto.nome, value: produto.id })),
     [produtos]
   );
 
-  const indicadoresFinanceiros = useMemo(
+  const indicadoresPrincipais = useMemo(
     () => [
-      { label: "Receita total", valor: Number(financeiro?.receita_total ?? 0) },
+      {
+        label: "Receita total",
+        valor: Number(financeiro?.receita_total ?? 0),
+        icone: "pi pi-wallet",
+        tom: "positive"
+      },
+      {
+        label: "Lucro bruto",
+        valor: Number(financeiro?.lucro_bruto_total ?? 0),
+        icone: "pi pi-arrow-up-right",
+        tom: "positive"
+      },
+      {
+        label: "Perdas no período",
+        valor: Number(financeiro?.perdas_total_custo ?? 0),
+        icone: "pi pi-exclamation-circle",
+        tom: "danger"
+      },
+      {
+        label: "Estoque a custo",
+        valor: Number(financeiro?.valor_estoque_custo ?? 0),
+        icone: "pi pi-box",
+        tom: "neutral"
+      }
+    ],
+    [financeiro]
+  );
+
+  const indicadoresSecundarios = useMemo(
+    () => [
       { label: "Custo das vendas", valor: Number(financeiro?.custo_total_vendas ?? 0) },
-      { label: "Lucro bruto", valor: Number(financeiro?.lucro_bruto_total ?? 0) },
-      { label: "Perdas no período", valor: Number(financeiro?.perdas_total_custo ?? 0) },
-      { label: "Estoque a custo", valor: Number(financeiro?.valor_estoque_custo ?? 0) },
       { label: "Estoque à venda", valor: Number(financeiro?.valor_estoque_venda ?? 0) }
     ],
     [financeiro]
   );
+
+  const periodoSelecionado =
+    filtros.data_inicial || filtros.data_final
+      ? `${filtros.data_inicial ? formatarData(filtros.data_inicial) : "Início"} até ${
+          filtros.data_final ? formatarData(filtros.data_final) : "hoje"
+        }`
+      : "Todo o período";
 
   const dadosGrafico = useMemo(
     () => [
@@ -157,6 +224,39 @@ export default function PaginaRelatorios() {
   async function limparFiltros() {
     setFiltros(FILTROS_INICIAIS);
     await carregarDados(FILTROS_INICIAIS);
+  }
+
+  async function aplicarPeriodoRapido(tipo) {
+    const periodo = obterPeriodoRapido(tipo);
+    const proximosFiltros = { ...filtros, ...periodo };
+    setFiltros(proximosFiltros);
+    await carregarDados(proximosFiltros);
+  }
+
+  function renderizarTipo(linha) {
+    const rotulo =
+      linha.tipo === "entrada"
+        ? "Entrada"
+        : linha.subtipo === "venda"
+          ? "Venda"
+          : linha.subtipo === "perda"
+            ? "Perda"
+            : "Saída";
+    const severity = linha.tipo === "entrada" ? "success" : linha.subtipo === "perda" ? "danger" : "info";
+
+    return <Tag value={rotulo} severity={severity} />;
+  }
+
+  function renderizarProduto(linha) {
+    return (
+      <div className={styles.productIdentity}>
+        <ProdutoVisual nome={linha.produto_nome} categoria={linha.categoria} tamanho="compacto" />
+        <div>
+          <strong>{linha.produto_nome}</strong>
+          {linha.categoria ? <span>{linha.categoria}</span> : null}
+        </div>
+      </div>
+    );
   }
 
   function exportarCsv() {
@@ -292,96 +392,135 @@ export default function PaginaRelatorios() {
 
       <header className={styles.header}>
         <div>
+          <span className={styles.eyebrow}>Análise do negócio</span>
           <h1>Relatórios</h1>
+          <p>Acompanhe resultado, perdas, validade e movimentações em um só lugar.</p>
+        </div>
+        <div className={styles.headerMeta}>
+          <span>Período analisado</span>
+          <strong>{periodoSelecionado}</strong>
         </div>
       </header>
 
       {mensagem ? <Message severity={mensagem.severity} text={mensagem.text} /> : null}
 
-      <div className={styles.panel}>
+      <div className={`${styles.panel} ${styles.filterPanel}`}>
         <div className={styles.panelHeader}>
           <div>
-            <h2>Filtros</h2>
+            <span className={styles.sectionIcon}><i className="pi pi-sliders-h" /></span>
+            <div>
+              <h2>Filtros do relatório</h2>
+              <p>Refine o período e as movimentações que deseja analisar.</p>
+            </div>
           </div>
           <div className={styles.actions}>
-            <Button label="Limpar" text onClick={limparFiltros} disabled={carregando} />
-            <Button label="Atualizar" icon="pi pi-refresh" onClick={aplicarFiltros} loading={carregando} />
-          </div>
-        </div>
-
-        <div className={styles.filterGrid}>
-          <div className={styles.filterField}>
-            <label htmlFor="relatorios-produto">Produto</label>
-            <Dropdown
-              id="relatorios-produto"
-              value={filtros.produto_id}
-              options={opcoesProdutos}
-              onChange={(evento) => atualizarFiltro("produto_id", evento.value)}
-              placeholder="Todos os produtos"
-              showClear
-              filter
-              disabled={carregando}
-            />
-          </div>
-
-          <div className={styles.filterField}>
-            <label htmlFor="relatorios-subtipo">Tipo</label>
-            <Dropdown
-              id="relatorios-subtipo"
-              value={filtros.subtipo}
-              options={[
-                { label: "Todos", value: "" },
-                { label: "Venda", value: "venda" },
-                { label: "Perda", value: "perda" },
-                { label: "Compra", value: "compra" }
-              ]}
-              onChange={(evento) => atualizarFiltro("subtipo", evento.value)}
-              placeholder="Todos"
-              disabled={carregando}
-            />
-          </div>
-
-          <div className={styles.filterField}>
-            <label htmlFor="relatorios-data-inicial">Data inicial</label>
-            <InputText
-              id="relatorios-data-inicial"
-              type="date"
-              value={filtros.data_inicial}
-              onChange={(evento) => atualizarFiltro("data_inicial", evento.target.value)}
-              disabled={carregando}
-            />
-          </div>
-
-          <div className={styles.filterField}>
-            <label htmlFor="relatorios-data-final">Data final</label>
-            <InputText
-              id="relatorios-data-final"
-              type="date"
-              value={filtros.data_final}
-              onChange={(evento) => atualizarFiltro("data_final", evento.target.value)}
-              disabled={carregando}
-            />
-          </div>
-
-          <div className={styles.filterField}>
-            <label htmlFor="relatorios-dias-alerta">Dias para alerta</label>
-            <InputNumber
-              id="relatorios-dias-alerta"
-              min={1}
-              useGrouping={false}
-              value={filtros.dias_alerta}
-              onValueChange={(evento) => atualizarFiltro("dias_alerta", evento.value ?? 3)}
-              disabled={carregando}
+            {filtrosVisiveis ? (
+              <>
+                <Button label="Limpar" text onClick={limparFiltros} disabled={carregando} />
+                <Button label="Atualizar" icon="pi pi-refresh" onClick={aplicarFiltros} loading={carregando} />
+              </>
+            ) : null}
+            <Button
+              label={filtrosVisiveis ? "Ocultar filtros" : "Editar filtros"}
+              icon={filtrosVisiveis ? "pi pi-chevron-up" : "pi pi-sliders-h"}
+              outlined
+              onClick={() => setFiltrosVisiveis((valorAtual) => !valorAtual)}
             />
           </div>
         </div>
+
+        {filtrosVisiveis ? (
+          <>
+          <div className={styles.quickPeriods} aria-label="Períodos rápidos">
+            <span>Período rápido</span>
+            <Button label="Hoje" text size="small" onClick={() => aplicarPeriodoRapido("hoje")} />
+            <Button label="7 dias" text size="small" onClick={() => aplicarPeriodoRapido("7d")} />
+            <Button label="30 dias" text size="small" onClick={() => aplicarPeriodoRapido("30d")} />
+            <Button label="Este mês" text size="small" onClick={() => aplicarPeriodoRapido("mes")} />
+          </div>
+          <div className={styles.filterGrid}>
+            <div className={styles.filterField}>
+              <label htmlFor="relatorios-produto">Produto</label>
+              <Dropdown
+                id="relatorios-produto"
+                value={filtros.produto_id}
+                options={opcoesProdutos}
+                onChange={(evento) => atualizarFiltro("produto_id", evento.value)}
+                placeholder="Todos os produtos"
+                showClear
+                filter
+                disabled={carregando}
+              />
+            </div>
+
+            <div className={styles.filterField}>
+              <label htmlFor="relatorios-subtipo">Tipo</label>
+              <Dropdown
+                id="relatorios-subtipo"
+                value={filtros.subtipo}
+                options={[
+                  { label: "Todos", value: "" },
+                  { label: "Venda", value: "venda" },
+                  { label: "Perda", value: "perda" },
+                  { label: "Compra", value: "compra" }
+                ]}
+                onChange={(evento) => atualizarFiltro("subtipo", evento.value)}
+                placeholder="Todos"
+                disabled={carregando}
+              />
+            </div>
+
+            <div className={styles.filterField}>
+              <label htmlFor="relatorios-data-inicial">Data inicial</label>
+              <InputText
+                id="relatorios-data-inicial"
+                type="date"
+                value={filtros.data_inicial}
+                onChange={(evento) => atualizarFiltro("data_inicial", evento.target.value)}
+                disabled={carregando}
+              />
+            </div>
+
+            <div className={styles.filterField}>
+              <label htmlFor="relatorios-data-final">Data final</label>
+              <InputText
+                id="relatorios-data-final"
+                type="date"
+                value={filtros.data_final}
+                onChange={(evento) => atualizarFiltro("data_final", evento.target.value)}
+                disabled={carregando}
+              />
+            </div>
+
+            <div className={styles.filterField}>
+              <label htmlFor="relatorios-dias-alerta">Dias para alerta</label>
+              <InputNumber
+                id="relatorios-dias-alerta"
+                min={1}
+                useGrouping={false}
+                value={filtros.dias_alerta}
+                onValueChange={(evento) => atualizarFiltro("dias_alerta", evento.value ?? 3)}
+                disabled={carregando}
+              />
+            </div>
+          </div>
+          </>
+        ) : null}
       </div>
 
       <div className={styles.metrics}>
-        {indicadoresFinanceiros.map((indicador) => (
-          <article className={styles.metricCard} key={indicador.label}>
-            <span>{indicador.label}</span>
-            <strong>{carregando ? "--" : formatarMoeda(indicador.valor)}</strong>
+        {indicadoresPrincipais.map((indicador) => (
+          <article
+            className={`${styles.metricCard} ${styles[`metricCard_${indicador.tom}`]}`}
+            key={indicador.label}
+          >
+            <div className={styles.metricTop}>
+              <span>{indicador.label}</span>
+              <i className={indicador.icone} aria-hidden="true" />
+            </div>
+            <strong className={carregando ? styles.skeletonValue : ""}>
+              {carregando ? "Carregando" : formatarMoeda(indicador.valor)}
+            </strong>
           </article>
         ))}
       </div>
@@ -390,7 +529,11 @@ export default function PaginaRelatorios() {
         <div className={styles.panel}>
           <div className={styles.panelHeader}>
             <div>
-              <h2>Resumo financeiro</h2>
+              <span className={styles.sectionIcon}><i className="pi pi-chart-bar" /></span>
+              <div>
+                <h2>Desempenho financeiro</h2>
+                <p>Comparativo dos valores consolidados no período.</p>
+              </div>
             </div>
           </div>
 
@@ -408,12 +551,27 @@ export default function PaginaRelatorios() {
               </div>
             ))}
           </div>
+
+          <div className={styles.secondaryMetrics}>
+            {indicadoresSecundarios.map((indicador) => (
+              <div key={indicador.label}>
+                <span>{indicador.label}</span>
+                <strong>{carregando ? "--" : formatarMoeda(indicador.valor)}</strong>
+              </div>
+            ))}
+          </div>
         </div>
 
-        <div className={styles.panel}>
+        <div className={`${styles.panel} ${styles.validityPanel}`}>
           <div className={styles.panelHeader}>
             <div>
-              <h2>Validade</h2>
+              <span className={`${styles.sectionIcon} ${styles.sectionIconWarning}`}>
+                <i className="pi pi-clock" />
+              </span>
+              <div>
+                <h2>Saúde do estoque</h2>
+                <p>Itens vencidos ou próximos do limite definido.</p>
+              </div>
             </div>
           </div>
 
@@ -441,7 +599,11 @@ export default function PaginaRelatorios() {
       <div className={styles.panel}>
         <div className={styles.panelHeader}>
           <div>
-            <h2>Movimentações detalhadas</h2>
+            <span className={styles.sectionIcon}><i className="pi pi-list" /></span>
+            <div>
+              <h2>Movimentações detalhadas</h2>
+              <p>{movimentacoes.length} registros encontrados nos filtros atuais.</p>
+            </div>
           </div>
           <div className={styles.actions}>
             <Button label="Exportar CSV" icon="pi pi-download" text onClick={exportarCsv} />
@@ -468,9 +630,8 @@ export default function PaginaRelatorios() {
             currentPageReportTemplate="{first} a {last} de {totalRecords}"
           >
             <Column field="data" header="Data" body={(linha) => formatarData(linha.data)} />
-            <Column field="produto_nome" header="Produto" />
-            <Column field="tipo" header="Tipo" />
-            <Column field="subtipo" header="Subtipo" body={(linha) => linha.subtipo ?? "-"} />
+            <Column field="produto_nome" header="Produto" body={renderizarProduto} />
+            <Column field="tipo" header="Movimentação" body={renderizarTipo} />
             <Column
               field="quantidade"
               header="Quantidade"
@@ -482,13 +643,54 @@ export default function PaginaRelatorios() {
             <Column field="usuario_nome" header="Responsável" body={(linha) => linha.usuario_nome ?? "-"} />
           </DataTable>
         )}
+
+        {movimentacoes.length > 0 ? (
+          <div className={styles.mobileList}>
+            {movimentacoes.map((linha) => (
+              <article className={styles.mobileRecord} key={linha.id}>
+                <div className={styles.mobileRecordHeader}>
+                  <div className={styles.mobileProduct}>
+                    <ProdutoVisual nome={linha.produto_nome} categoria={linha.categoria} tamanho="compacto" />
+                    <div>
+                      <strong>{linha.produto_nome}</strong>
+                      <span>{formatarData(linha.data)}</span>
+                    </div>
+                  </div>
+                  {renderizarTipo(linha)}
+                </div>
+                <dl>
+                  <div>
+                    <dt>Quantidade</dt>
+                    <dd>{formatarQuantidadeComUnidade(linha.quantidade, linha.unidade_medida)}</dd>
+                  </div>
+                  <div>
+                    <dt>Receita</dt>
+                    <dd>{formatarMoeda(linha.receita_total, { exibirVazio: true })}</dd>
+                  </div>
+                  <div>
+                    <dt>Lucro bruto</dt>
+                    <dd>{formatarMoeda(linha.lucro_bruto, { exibirVazio: true })}</dd>
+                  </div>
+                  <div>
+                    <dt>Responsável</dt>
+                    <dd>{linha.usuario_nome ?? "-"}</dd>
+                  </div>
+                </dl>
+              </article>
+            ))}
+          </div>
+        ) : null}
       </div>
 
       <div className={styles.tablesGrid}>
         <div className={styles.panel}>
           <div className={styles.panelHeader}>
             <div>
-              <h2>Top 5 produtos vendidos</h2>
+              <span className={styles.sectionIcon}><i className="pi pi-star" /></span>
+              <div>
+                <h2>Top 5 produtos vendidos</h2>
+                <p>Produtos com maior saída no período.</p>
+              </div>
             </div>
           </div>
 
@@ -500,7 +702,7 @@ export default function PaginaRelatorios() {
             />
           ) : (
             <DataTable value={maisVendidos} dataKey="produto_id" loading={carregando} responsiveLayout="scroll">
-              <Column field="produto_nome" header="Produto" />
+              <Column field="produto_nome" header="Produto" body={renderizarProduto} />
               <Column
                 field="total_vendido"
                 header="Quantidade"
@@ -515,7 +717,13 @@ export default function PaginaRelatorios() {
         <div className={styles.panel}>
           <div className={styles.panelHeader}>
             <div>
-              <h2>Próximos do vencimento</h2>
+              <span className={`${styles.sectionIcon} ${styles.sectionIconWarning}`}>
+                <i className="pi pi-calendar" />
+              </span>
+              <div>
+                <h2>Próximos do vencimento</h2>
+                <p>Priorize a saída destes lotes.</p>
+              </div>
             </div>
           </div>
 
@@ -532,7 +740,7 @@ export default function PaginaRelatorios() {
               loading={carregando}
               responsiveLayout="scroll"
             >
-              <Column field="produto_nome" header="Produto" />
+              <Column field="produto_nome" header="Produto" body={renderizarProduto} />
               <Column
                 field="quantidade_total"
                 header="Quantidade"

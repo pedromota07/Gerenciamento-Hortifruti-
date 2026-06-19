@@ -4,6 +4,8 @@ import os
 import sys
 from pathlib import Path
 
+import bcrypt
+
 BASE_DIR = Path(__file__).resolve().parents[1]
 LOCAL_SQLITE_URI = f"sqlite:///{(BASE_DIR / 'instance' / 'hortifruti_dev.db').as_posix()}"
 
@@ -16,7 +18,7 @@ from sqlalchemy import text
 
 from app import create_app
 from app.extensions import db
-from app.models import CamadaEstoque, ConsumoSaida, Movimentacao, Produto, Usuario
+from app.models import CamadaEstoque, ConsumoSaida, Movimentacao, PerfilUsuario, Produto, Usuario
 
 USERS = [
     {
@@ -492,33 +494,60 @@ def expect_status(response, expected_status, context):
     return response.get_json()
 
 
-def create_users(client):
-    users_by_email = {}
+def authorization_headers(client, email, senha):
+    response = client.post("/api/auth/login", json={"email": email, "senha": senha})
+    data = expect_status(response, 200, f"login de {email}")
+    return {"Authorization": f"Bearer {data['token']}"}
 
-    for user_payload in USERS:
-        response = client.post("/api/usuarios", json=user_payload)
+
+def bootstrap_admin():
+    admin_data = USERS[0]
+    admin = Usuario(
+        nome=admin_data["nome"],
+        email=admin_data["email"],
+        senha_hash=bcrypt.hashpw(admin_data["senha"].encode("utf-8"), bcrypt.gensalt()).decode("utf-8"),
+        perfil=PerfilUsuario(admin_data["perfil"]),
+        ativo=True,
+    )
+    db.session.add(admin)
+    db.session.commit()
+    return admin.to_dict()
+
+
+def create_users(client, headers):
+    admin = Usuario.query.filter_by(email=USERS[0]["email"]).one()
+    users_by_email = {admin.email: admin.to_dict()}
+
+    for user_payload in USERS[1:]:
+        response = client.post("/api/usuarios", json=user_payload, headers=headers)
         user = expect_status(response, 201, f"criacao do usuario {user_payload['email']}")
         users_by_email[user["email"]] = user
 
     return users_by_email
 
 
-def create_products(client):
+def create_products(client, headers):
     products_by_name = {}
 
     for product_payload in PRODUCTS:
-        response = client.post("/api/produtos", json=product_payload)
+        response = client.post("/api/produtos", json=product_payload, headers=headers)
         product = expect_status(response, 201, f"criacao do produto {product_payload['nome']}")
         products_by_name[product["nome"]] = product
 
     return products_by_name
 
 
-def create_movements(client, users_by_email, products_by_name):
+def create_movements(client, products_by_name):
+    passwords_by_email = {user["email"]: user["senha"] for user in USERS}
+    headers_by_email = {}
+
     for movement in MOVEMENTS:
+        email = movement["usuario"]
+        if email not in headers_by_email:
+            headers_by_email[email] = authorization_headers(client, email, passwords_by_email[email])
+
         payload = {
             "produto_id": products_by_name[movement["produto"]]["id"],
-            "usuario_id": users_by_email[movement["usuario"]]["id"],
             "data": movement["data"],
             "quantidade": movement["quantidade"],
             "observacao": movement.get("observacao"),
@@ -531,21 +560,33 @@ def create_movements(client, users_by_email, products_by_name):
         if "preco_unitario_venda" in movement:
             payload["preco_unitario_venda"] = movement["preco_unitario_venda"]
 
-        response = client.post(movement["endpoint"], json=payload)
+        response = client.post(movement["endpoint"], json=payload, headers=headers_by_email[email])
         expect_status(response, 201, f"movimentacao {movement['endpoint']} de {movement['produto']}")
 
 
-def build_summary(client):
-    produtos = expect_status(client.get("/api/produtos"), 200, "consulta de produtos")
-    usuarios = expect_status(client.get("/api/usuarios"), 200, "consulta de usuarios")
-    historico = expect_status(client.get("/api/movimentacoes?limite=20"), 200, "consulta de historico")
+def build_summary(client, headers):
+    produtos = expect_status(client.get("/api/produtos", headers=headers), 200, "consulta de produtos")
+    usuarios = expect_status(client.get("/api/usuarios", headers=headers), 200, "consulta de usuarios")
+    historico = expect_status(
+        client.get("/api/movimentacoes?limite=20", headers=headers),
+        200,
+        "consulta de historico",
+    )
     mais_vendidos = expect_status(
-        client.get("/api/relatorios/mais-vendidos?limite=5"),
+        client.get("/api/relatorios/mais-vendidos?limite=5", headers=headers),
         200,
         "consulta de mais vendidos",
     )
-    financeiro = expect_status(client.get("/api/relatorios/financeiro"), 200, "consulta financeira")
-    validade = expect_status(client.get("/api/relatorios/validade?dias=3"), 200, "consulta de validade")
+    financeiro = expect_status(
+        client.get("/api/relatorios/financeiro", headers=headers),
+        200,
+        "consulta financeira",
+    )
+    validade = expect_status(
+        client.get("/api/relatorios/validade?dias=3", headers=headers),
+        200,
+        "consulta de validade",
+    )
 
     print("Banco populado com carga demonstrativa.")
     print(f"DATABASE_URL: {os.environ['DATABASE_URL']}")
@@ -585,12 +626,14 @@ def main():
 
     with app.app_context():
         reset_database()
+        bootstrap_admin()
 
         with app.test_client() as client:
-            users_by_email = create_users(client)
-            products_by_name = create_products(client)
-            create_movements(client, users_by_email, products_by_name)
-            build_summary(client)
+            headers = authorization_headers(client, USERS[0]["email"], USERS[0]["senha"])
+            create_users(client, headers)
+            products_by_name = create_products(client, headers)
+            create_movements(client, products_by_name)
+            build_summary(client, headers)
 
     return database_url
 

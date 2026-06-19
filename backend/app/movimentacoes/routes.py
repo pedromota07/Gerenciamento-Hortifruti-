@@ -1,9 +1,10 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 from marshmallow import ValidationError
 
 from ..extensions import db
 from ..models import SubtipoMovimentacao, TipoMovimentacao
 from ..schemas.movimentacao import MovimentacaoCreateSchema
+from ..shared.auth import usuario_ativo_required
 from ..shared.errors import DomainError
 from ..shared.http import json_error, load_payload
 from ..shared.query_params import (
@@ -20,6 +21,7 @@ _movimentacao_create_schema = MovimentacaoCreateSchema()
 
 
 @movimentacoes_bp.get("")
+@usuario_ativo_required
 def list_movimentacoes():
     try:
         filtros = {
@@ -38,9 +40,11 @@ def list_movimentacoes():
 
 
 @movimentacoes_bp.post("/entrada")
+@usuario_ativo_required
 def create_entrada():
     try:
         data = load_payload(_movimentacao_create_schema)
+        data["usuario_id"] = g.usuario_autenticado.id
         resultado = MovimentacaoService(db.session).registrar_entrada(data)
     except ValidationError as exc:
         return json_error(exc.messages, 400)
@@ -51,9 +55,11 @@ def create_entrada():
 
 
 @movimentacoes_bp.post("/saida")
+@usuario_ativo_required
 def create_saida():
     try:
         data = load_payload(_movimentacao_create_schema)
+        data["usuario_id"] = g.usuario_autenticado.id
         resultado = MovimentacaoService(db.session).registrar_saida(data)
     except ValidationError as exc:
         return json_error(exc.messages, 400)

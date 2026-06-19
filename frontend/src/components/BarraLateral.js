@@ -23,7 +23,7 @@ function itemEstaAtivo(caminhoAtual, destino) {
   return caminhoAtual === destino || caminhoAtual.startsWith(`${destino}/`);
 }
 
-export default function BarraLateral() {
+export default function BarraLateral({ aberto, compacto, aoFechar, aoAlternarCompacto }) {
   const caminhoAtual = usePathname();
   const roteador = useRouter();
   const { sair, usuario } = usarAutenticacao();
@@ -31,41 +31,63 @@ export default function BarraLateral() {
     ? itensNavegacao
     : itensNavegacao.filter((itemNavegacao) => itemNavegacao.destino !== "/usuarios");
 
-  const modeloMenu = itensVisiveis.map((itemNavegacao) => ({
-    label: itemNavegacao.rotulo,
-    template: () => (
+  const modeloMenu = itensVisiveis.map((itemNavegacao) => {
+    const ativo = itemEstaAtivo(caminhoAtual, itemNavegacao.destino);
+
+    return {
+      label: itemNavegacao.rotulo,
+      template: () => (
       <Link
-        className={`sidebar-link${itemEstaAtivo(caminhoAtual, itemNavegacao.destino) ? " is-active" : ""}`}
+        className={`sidebar-link${ativo ? " is-active" : ""}`}
         href={itemNavegacao.destino}
+        title={compacto ? itemNavegacao.rotulo : undefined}
+        aria-current={ativo ? "page" : undefined}
+        onClick={aoFechar}
       >
         <i className={itemNavegacao.icone} />
         <span>{itemNavegacao.rotulo}</span>
       </Link>
-    )
-  }));
+      )
+    };
+  });
 
   return (
-    <aside className="app-sidebar">
+    <aside className={`app-sidebar${aberto ? " is-open" : ""}`}>
       <div className="app-brand">
-        <span className="app-brand-mark">HF</span>
-        <div>
-          <strong>Hortifruti</strong>
-          <p>{usuario ? `${usuario.nome} - ${usuario.perfil}` : "Sistema"}</p>
+        <span className="app-brand-mark">
+          <i className="pi pi-sparkles" />
+        </span>
+        <div className="app-brand-copy">
+          <strong>HortiGestão</strong>
+          <p>Estoque & vendas</p>
         </div>
       </div>
 
+      <span className="sidebar-section-label">Operação</span>
       <Menu className="sidebar-menu" model={modeloMenu} />
 
-      <Button
-        className="sidebar-logout"
-        label="Sair"
-        icon="pi pi-sign-out"
-        text
-        onClick={() => {
-          sair();
-          roteador.replace("/login");
-        }}
-      />
+      <div className="sidebar-footer">
+        <button
+          className="sidebar-collapse"
+          type="button"
+          title={compacto ? "Expandir menu" : "Recolher menu"}
+          onClick={aoAlternarCompacto}
+        >
+          <i className={`pi ${compacto ? "pi-angle-right" : "pi-angle-left"}`} />
+          <span>Recolher menu</span>
+        </button>
+
+        <Button
+          className="sidebar-logout"
+          label="Sair"
+          icon="pi pi-sign-out"
+          text
+          onClick={() => {
+            sair();
+            roteador.replace("/login");
+          }}
+        />
+      </div>
     </aside>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "primereact/button";
 import { Column } from "primereact/column";
@@ -70,6 +70,9 @@ export default function PaginaUsuarios() {
   const [errosNovoUsuario, setErrosNovoUsuario] = useState({});
   const [usuarioSelecionado, setUsuarioSelecionado] = useState(null);
   const [salvando, setSalvando] = useState(false);
+  const [busca, setBusca] = useState("");
+  const [filtroPerfil, setFiltroPerfil] = useState("");
+  const [filtroStatus, setFiltroStatus] = useState(null);
 
   useEffect(() => {
     if (autenticacaoPronta && usuario?.perfil !== "gerente") {
@@ -224,13 +227,30 @@ export default function PaginaUsuarios() {
   }
 
   function renderizarStatus(usuarioLinha) {
-    return (
-      <Tag severity={usuarioLinha.ativo ? "success" : "danger"} value={usuarioLinha.ativo ? "Ativo" : "Inativo"} />
-    );
+    return <Tag severity={usuarioLinha.ativo ? "success" : "danger"} value={usuarioLinha.ativo ? "Ativo" : "Inativo"} />;
   }
 
   function renderizarPerfil(usuarioLinha) {
-    return usuarioLinha.perfil === "gerente" ? "Gerente" : "Funcionário";
+    return (
+      <span className={styles.profileCell}>
+        <i className={usuarioLinha.perfil === "gerente" ? "pi pi-shield" : "pi pi-user"} />
+        {usuarioLinha.perfil === "gerente" ? "Gerente" : "Funcionário"}
+      </span>
+    );
+  }
+
+  function renderizarNome(usuarioLinha) {
+    const usuarioAtual = usuarioLinha.id === usuario?.id;
+
+    return (
+      <div className={styles.userCell}>
+        <span className={styles.avatar}>{usuarioLinha.nome.trim().charAt(0).toUpperCase()}</span>
+        <div>
+          <strong>{usuarioLinha.nome}</strong>
+          {usuarioAtual ? <small>Seu acesso</small> : null}
+        </div>
+      </div>
+    );
   }
 
   function renderizarAcoes(usuarioLinha) {
@@ -245,13 +265,45 @@ export default function PaginaUsuarios() {
     );
   }
 
-  if (!autenticacaoPronta || usuario?.perfil !== "gerente") {
-    return null;
-  }
-
   function atualizarCampoNovoUsuario(campo, valor) {
     setFormulario((formularioAtual) => ({ ...formularioAtual, [campo]: valor }));
     setErrosNovoUsuario((errosAtuais) => ({ ...errosAtuais, [campo]: null }));
+  }
+
+  const usuariosFiltrados = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
+
+    return usuarios.filter((usuarioLinha) => {
+      const correspondeBusca =
+        !termo ||
+        usuarioLinha.nome.toLowerCase().includes(termo) ||
+        usuarioLinha.email.toLowerCase().includes(termo);
+      const correspondePerfil = !filtroPerfil || usuarioLinha.perfil === filtroPerfil;
+      const correspondeStatus = filtroStatus === null || usuarioLinha.ativo === filtroStatus;
+
+      return correspondeBusca && correspondePerfil && correspondeStatus;
+    });
+  }, [busca, filtroPerfil, filtroStatus, usuarios]);
+
+  const resumoUsuarios = useMemo(
+    () => ({
+      total: usuarios.length,
+      ativos: usuarios.filter((usuarioLinha) => usuarioLinha.ativo).length,
+      gerentes: usuarios.filter((usuarioLinha) => usuarioLinha.perfil === "gerente").length
+    }),
+    [usuarios]
+  );
+
+  function limparFiltros() {
+    setBusca("");
+    setFiltroPerfil("");
+    setFiltroStatus(null);
+  }
+
+  const filtrosAtivos = Boolean(busca || filtroPerfil || filtroStatus !== null);
+
+  if (!autenticacaoPronta || usuario?.perfil !== "gerente") {
+    return null;
   }
 
   return (
@@ -261,11 +313,37 @@ export default function PaginaUsuarios() {
 
       <header className={styles.header}>
         <div>
+          <span className={styles.eyebrow}>Controle de acesso</span>
           <h1>Usuários</h1>
+          <p>Gerencie quem pode acessar e operar o sistema.</p>
         </div>
 
-        <Button label="Novo Usuário" icon="pi pi-plus" onClick={() => setModalNovo(true)} />
+        <Button label="Novo usuário" icon="pi pi-plus" onClick={() => setModalNovo(true)} />
       </header>
+
+      <div className={styles.metrics}>
+        <article>
+          <span className={styles.metricIcon}><i className="pi pi-users" /></span>
+          <div>
+            <strong>{carregando ? "--" : resumoUsuarios.total}</strong>
+            <span>Usuários cadastrados</span>
+          </div>
+        </article>
+        <article>
+          <span className={`${styles.metricIcon} ${styles.metricIconActive}`}><i className="pi pi-check-circle" /></span>
+          <div>
+            <strong>{carregando ? "--" : resumoUsuarios.ativos}</strong>
+            <span>Acessos ativos</span>
+          </div>
+        </article>
+        <article>
+          <span className={`${styles.metricIcon} ${styles.metricIconManager}`}><i className="pi pi-shield" /></span>
+          <div>
+            <strong>{carregando ? "--" : resumoUsuarios.gerentes}</strong>
+            <span>Gerentes</span>
+          </div>
+        </article>
+      </div>
 
       <div className={styles.panel}>
         {mensagem ? (
@@ -277,29 +355,96 @@ export default function PaginaUsuarios() {
         <div className={styles.panelHeader}>
           <div>
             <h2>Usuários cadastrados</h2>
+            <p>{usuariosFiltrados.length} de {usuarios.length} acessos exibidos</p>
           </div>
         </div>
 
-        {usuarios.length === 0 && !carregando ? (
+        <div className={styles.filters}>
+          <span className={styles.searchField}>
+            <i className="pi pi-search" />
+            <InputText
+              value={busca}
+              onChange={(evento) => setBusca(evento.target.value)}
+              placeholder="Buscar por nome ou email"
+              aria-label="Buscar usuários por nome ou email"
+            />
+          </span>
+          <Dropdown
+            value={filtroPerfil}
+            options={[{ label: "Todos os perfis", value: "" }, ...opcoesPerfil]}
+            onChange={(evento) => setFiltroPerfil(evento.value)}
+            placeholder="Perfil"
+            aria-label="Filtrar usuários por perfil"
+          />
+          <Dropdown
+            value={filtroStatus}
+            options={[{ label: "Todos os status", value: null }, ...opcoesStatus]}
+            onChange={(evento) => setFiltroStatus(evento.value)}
+            placeholder="Status"
+            aria-label="Filtrar usuários por status"
+          />
+          {filtrosAtivos ? <Button label="Limpar filtros" text onClick={limparFiltros} /> : null}
+        </div>
+
+        {usuariosFiltrados.length === 0 && !carregando ? (
           <EstadoVazio
-            icone="pi pi-users"
-            titulo="Nenhum usuário cadastrado ainda."
-            descricao="Cadastre o primeiro usuário para organizar quem faz cada operação."
+            icone={filtrosAtivos ? "pi pi-search" : "pi pi-users"}
+            titulo={filtrosAtivos ? "Nenhum usuário corresponde aos filtros." : "Nenhum usuário cadastrado ainda."}
+            descricao={
+              filtrosAtivos
+                ? "Limpe ou ajuste os filtros para encontrar outro acesso."
+                : "Cadastre o primeiro usuário para organizar quem faz cada operação."
+            }
           />
         ) : (
-          <DataTable value={usuarios} dataKey="id" loading={carregando} responsiveLayout="scroll">
-            <Column field="nome" header="Nome" sortable />
-            <Column field="email" header="Email" sortable />
-            <Column field="perfil" header="Perfil" body={renderizarPerfil} sortable />
-            <Column field="ativo" header="Status" body={renderizarStatus} sortable />
-            <Column header="Ações" body={renderizarAcoes} />
-          </DataTable>
+          <>
+            <DataTable
+              value={usuariosFiltrados}
+              dataKey="id"
+              loading={carregando}
+              responsiveLayout="scroll"
+              paginator
+              rows={10}
+              rowsPerPageOptions={[10, 25, 50]}
+              currentPageReportTemplate="{first} a {last} de {totalRecords}"
+            >
+              <Column field="nome" header="Usuário" body={renderizarNome} sortable />
+              <Column field="email" header="Email" sortable />
+              <Column field="perfil" header="Perfil" body={renderizarPerfil} sortable />
+              <Column field="ativo" header="Status" body={renderizarStatus} sortable />
+              <Column header="" body={renderizarAcoes} className={styles.actionColumn} />
+            </DataTable>
+
+            <div className={styles.mobileList}>
+              {usuariosFiltrados.map((usuarioLinha) => (
+                <article
+                  className={`${styles.mobileUser} ${usuarioLinha.ativo ? "" : styles.mobileUserInactive}`}
+                  key={usuarioLinha.id}
+                >
+                  <div className={styles.mobileUserHeader}>
+                    {renderizarNome(usuarioLinha)}
+                    {renderizarStatus(usuarioLinha)}
+                  </div>
+                  <div className={styles.mobileUserBody}>
+                    <span><i className="pi pi-envelope" />{usuarioLinha.email}</span>
+                    {renderizarPerfil(usuarioLinha)}
+                  </div>
+                  <Button
+                    label="Editar acesso"
+                    icon="pi pi-pencil"
+                    outlined
+                    onClick={() => abrirModalEditar(usuarioLinha)}
+                  />
+                </article>
+              ))}
+            </div>
+          </>
         )}
       </div>
 
       <Dialog
         visible={modalNovo}
-        header="Novo Usuário"
+        header="Novo usuário"
         style={{ width: "min(92vw, 640px)" }}
         onHide={fecharModalNovo}
       >
@@ -367,14 +512,14 @@ export default function PaginaUsuarios() {
 
           <div className={styles.dialogFooter}>
             <Button label="Cancelar" type="button" text onClick={fecharModalNovo} />
-            <Button label="Salvar Usuário" type="submit" loading={salvando} />
+            <Button label="Salvar usuário" type="submit" loading={salvando} />
           </div>
         </form>
       </Dialog>
 
       <Dialog
         visible={modalEditar}
-        header="Editar Usuário"
+        header="Editar usuário"
         style={{ width: "min(92vw, 640px)" }}
         onHide={fecharModalEditar}
       >

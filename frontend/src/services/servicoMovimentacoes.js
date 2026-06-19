@@ -1,30 +1,16 @@
 import { requisitarApi } from "./api";
-import { obterUsuarioIdAutenticado } from "./armazenamentoAutenticacao";
-
-function incluirUsuarioAutenticado(dadosMovimentacao) {
-  const usuarioId = obterUsuarioIdAutenticado();
-
-  if (!usuarioId || dadosMovimentacao.usuario_id) {
-    return dadosMovimentacao;
-  }
-
-  return {
-    ...dadosMovimentacao,
-    usuario_id: usuarioId
-  };
-}
 
 export function registrarEntrada(dadosMovimentacao) {
   return requisitarApi("/movimentacoes/entrada", {
     method: "POST",
-    body: JSON.stringify(incluirUsuarioAutenticado(dadosMovimentacao))
+    body: JSON.stringify(dadosMovimentacao)
   });
 }
 
 export function registrarSaida(dadosMovimentacao) {
   return requisitarApi("/movimentacoes/saida", {
     method: "POST",
-    body: JSON.stringify(incluirUsuarioAutenticado(dadosMovimentacao))
+    body: JSON.stringify(dadosMovimentacao)
   });
 }
 

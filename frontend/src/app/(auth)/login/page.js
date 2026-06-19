@@ -34,6 +34,11 @@ export default function PaginaLogin() {
       return;
     }
 
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setMensagem({ severity: "error", text: "Informe um email válido." });
+      return;
+    }
+
     setCarregando(true);
     setMensagem(null);
 
@@ -48,39 +53,91 @@ export default function PaginaLogin() {
 
   return (
     <section className={styles.page}>
-      <form className={styles.form} onSubmit={enviarFormulario}>
-        <div className={styles.header}>
-          <span className={styles.eyebrow}>Hortifruti</span>
-          <h1>Login</h1>
-          <p>Acesse o painel de controle do Hortifruti.</p>
-        </div>
+      <div className={styles.shell}>
+        <aside className={styles.brandPanel}>
+          <div className={styles.brand}>
+            <span className={styles.brandMark}><i className="pi pi-sparkles" /></span>
+            <div>
+              <strong>Hortifruti</strong>
+              <span>Gestão inteligente</span>
+            </div>
+          </div>
 
-        {mensagem ? <Message severity={mensagem.severity} text={mensagem.text} /> : null}
+          <div className={styles.brandContent}>
+            <span className={styles.eyebrow}>Do estoque ao resultado</span>
+            <h2>Seu hortifruti organizado, fresco e rentável.</h2>
+            <p>Controle produtos, validade, vendas e equipe com clareza para tomar decisões melhores todos os dias.</p>
+          </div>
 
-        <div className={styles.field}>
-          <label htmlFor="login-email">Email</label>
-          <InputText
-            id="login-email"
-            value={email}
-            onChange={(evento) => setEmail(evento.target.value)}
-            autoComplete="username"
-          />
-        </div>
+          <div className={styles.featureList}>
+            <span><i className="pi pi-check" /> Estoque e validade sob controle</span>
+            <span><i className="pi pi-check" /> Operação rápida no ponto de venda</span>
+            <span><i className="pi pi-check" /> Indicadores para decisões seguras</span>
+          </div>
 
-        <div className={styles.field}>
-          <label htmlFor="login-senha">Senha</label>
-          <Password
-            inputId="login-senha"
-            value={senha}
-            onChange={(evento) => setSenha(evento.target.value)}
-            feedback={false}
-            toggleMask
-            autoComplete="current-password"
-          />
-        </div>
+          <div className={styles.produceArt} aria-hidden="true">
+            <span className={styles.leafOne} />
+            <span className={styles.leafTwo} />
+            <span className={styles.fruitOne} />
+            <span className={styles.fruitTwo} />
+            <span className={styles.fruitThree} />
+          </div>
+        </aside>
 
-        <Button label="Entrar" type="submit" loading={carregando} />
-      </form>
+        <main className={styles.loginPanel}>
+          <form className={styles.form} onSubmit={enviarFormulario}>
+            <div className={styles.mobileBrand}>
+              <span className={styles.brandMark}><i className="pi pi-sparkles" /></span>
+              <strong>Hortifruti</strong>
+            </div>
+
+            <div className={styles.header}>
+              <span className={styles.eyebrow}>Bem-vindo de volta</span>
+              <h1>Acesse sua conta</h1>
+              <p>Entre com suas credenciais para continuar a operação.</p>
+            </div>
+
+            {mensagem ? <Message severity={mensagem.severity} text={mensagem.text} /> : null}
+
+            <div className={styles.fields}>
+              <div className={styles.field}>
+                <label htmlFor="login-email">Email</label>
+                <span className={styles.inputWrapper}>
+                  <i className="pi pi-envelope" />
+                  <InputText
+                    id="login-email"
+                    value={email}
+                    onChange={(evento) => setEmail(evento.target.value)}
+                    placeholder="seu@email.com"
+                    autoComplete="email"
+                    autoFocus
+                  />
+                </span>
+              </div>
+
+              <div className={styles.field}>
+                <label htmlFor="login-senha">Senha</label>
+                <span className={styles.passwordWrapper}>
+                  <i className="pi pi-lock" />
+                  <Password
+                    inputId="login-senha"
+                    value={senha}
+                    onChange={(evento) => setSenha(evento.target.value)}
+                    placeholder="Digite sua senha"
+                    feedback={false}
+                    toggleMask
+                    autoComplete="current-password"
+                  />
+                </span>
+              </div>
+            </div>
+
+            <Button label="Entrar no sistema" icon="pi pi-arrow-right" iconPos="right" type="submit" loading={carregando} />
+
+            <p className={styles.support}>Problemas para acessar? Procure o gerente responsável.</p>
+          </form>
+        </main>
+      </div>
     </section>
   );
 }

@@ -15,9 +15,10 @@ import { Toast } from "primereact/toast";
 
 import EstadoVazio from "@/components/EstadoVazio";
 import ModalMovimentacao from "@/components/ModalMovimentacao";
+import ProdutoVisual from "@/components/ProdutoVisual";
 import { registrarEntrada, registrarSaida } from "@/services/servicoMovimentacoes";
 import { criarProduto, buscarProdutos } from "@/services/servicoProdutos";
-import { formatarData, formatarQuantidadeComUnidade } from "@/utils/formatters";
+import { formatarData, formatarMoeda, formatarQuantidadeComUnidade } from "@/utils/formatters";
 import {
   estoqueEstaBaixo,
   produtoProximoDoVencimento,
@@ -250,12 +251,15 @@ export default function PaginaEstoque() {
   const produtosFiltrados = useMemo(
     () =>
       produtos.filter((produto) => {
+        const termoBusca = filtroGlobal.trim().toLocaleLowerCase("pt-BR");
+        const nomeCorresponde =
+          !termoBusca || produto.nome.toLocaleLowerCase("pt-BR").includes(termoBusca);
         const categoriaCorresponde = !filtroCategoria || produto.categoria === filtroCategoria;
         const statusCorresponde = !filtroStatus || produtoPossuiStatus(produto, filtroStatus);
 
-        return categoriaCorresponde && statusCorresponde;
+        return nomeCorresponde && categoriaCorresponde && statusCorresponde;
       }),
-    [filtroCategoria, filtroStatus, produtos]
+    [filtroCategoria, filtroGlobal, filtroStatus, produtos]
   );
 
   function produtoPossuiStatus(produto, status) {
@@ -292,13 +296,15 @@ export default function PaginaEstoque() {
 
     return (
       <div className={styles.quantityCell}>
-        <div className={styles.quantityStack}>
-          <strong>Total: {formatarQuantidadeComUnidade(produto.quantidade_atual, produto.unidade_medida)}</strong>
-          <span>Venda: {formatarQuantidadeComUnidade(produto.quantidade_disponivel_venda, produto.unidade_medida)}</span>
-          {possuiVencido ? (
-            <span>Vencido: {formatarQuantidadeComUnidade(produto.quantidade_vencida, produto.unidade_medida)}</span>
-          ) : null}
-        </div>
+        <strong>{formatarQuantidadeComUnidade(produto.quantidade_disponivel_venda, produto.unidade_medida)}</strong>
+        <span>
+          {formatarQuantidadeComUnidade(produto.quantidade_atual, produto.unidade_medida)} total
+        </span>
+        {possuiVencido ? (
+          <span className={styles.expiredQuantity}>
+            {formatarQuantidadeComUnidade(produto.quantidade_vencida, produto.unidade_medida)} vencido
+          </span>
+        ) : null}
       </div>
     );
   }
@@ -311,15 +317,15 @@ export default function PaginaEstoque() {
     }
 
     if (produtoTemEstoqueVencido(produto)) {
-      status.push(<Tag key="vencido" severity="danger" value="Produto vencido" />);
+      status.push(<Tag key="vencido" severity="danger" value="Vencido" />);
     }
 
     if (produtoProximoDoVencimento(produto)) {
-      status.push(<Tag key="proximo" severity="warning" value="Próximo do vencimento" />);
+      status.push(<Tag key="proximo" severity="warning" value="Vence em breve" />);
     }
 
     if (estoqueEstaBaixo(produto)) {
-      status.push(<Tag key="baixo" severity="danger" value="Estoque baixo" />);
+      status.push(<Tag key="baixo" severity="warning" value="Estoque baixo" />);
     }
 
     if (status.length === 0) {
@@ -333,22 +339,34 @@ export default function PaginaEstoque() {
     return (
       <div className={styles.actions}>
         <Button
-          label="Entrada"
+          aria-label={`Registrar entrada de ${produto.nome}`}
           icon="pi pi-plus"
           size="small"
+          rounded
           disabled={!produto.ativo}
           onClick={() => abrirMovimentacao("entrada", produto)}
+          tooltip="Registrar entrada"
+          tooltipOptions={{ position: "top" }}
         />
         <Button
-          label="Saída"
+          aria-label={`Registrar saída de ${produto.nome}`}
           icon="pi pi-minus"
           size="small"
+          rounded
+          outlined
           severity="warning"
           disabled={!produto.ativo}
           onClick={() => abrirMovimentacao("saida", produto)}
+          tooltip="Registrar saída"
+          tooltipOptions={{ position: "top" }}
         />
-        <Link href={`/produtos/${produto.id}`}>
-          <Button label="Ver Detalhe" icon="pi pi-eye" size="small" text />
+        <Link
+          className={styles.iconAction}
+          href={`/produtos/${produto.id}`}
+          aria-label={`Ver detalhes de ${produto.nome}`}
+          title="Ver detalhes"
+        >
+          <i className="pi pi-arrow-right" />
         </Link>
       </div>
     );
@@ -369,6 +387,77 @@ export default function PaginaEstoque() {
     setFiltroStatus(null);
   }
 
+  function aplicarFiltroStatus(status) {
+    setFiltroStatus((statusAtual) => (statusAtual === status ? null : status));
+  }
+
+  function renderizarCartaoProduto(produto) {
+    return (
+      <article className={styles.productCard} key={produto.id}>
+        <div className={styles.productCardHeader}>
+          <div className={styles.mobileProductIdentity}>
+            <ProdutoVisual nome={produto.nome} categoria={produto.categoria} />
+            <div>
+              <span className={styles.categoryLabel}>{produto.categoria}</span>
+              <h3>{produto.nome}</h3>
+              <small>
+                {produto.unidade_medida.toUpperCase()} · {formatarMoeda(produto.preco_venda_padrao)}
+              </small>
+            </div>
+          </div>
+          {renderizarStatus(produto)}
+        </div>
+
+        <div className={styles.productCardMetrics}>
+          <div>
+            <span>Disponível para venda</span>
+            <strong>
+              {formatarQuantidadeComUnidade(
+                produto.quantidade_disponivel_venda,
+                produto.unidade_medida
+              )}
+            </strong>
+          </div>
+          <div>
+            <span>Próxima validade</span>
+            <strong>{formatarData(produto.proxima_validade)}</strong>
+          </div>
+        </div>
+
+        {produtoTemEstoqueVencido(produto) ? (
+          <p className={styles.cardWarning}>
+            <i className="pi pi-exclamation-circle" />
+            {formatarQuantidadeComUnidade(produto.quantidade_vencida, produto.unidade_medida)} sem
+            disponibilidade por vencimento
+          </p>
+        ) : null}
+
+        <div className={styles.productCardActions}>
+          <Button
+            label="Entrada"
+            icon="pi pi-plus"
+            size="small"
+            disabled={!produto.ativo}
+            onClick={() => abrirMovimentacao("entrada", produto)}
+          />
+          <Button
+            label="Saída"
+            icon="pi pi-minus"
+            size="small"
+            outlined
+            severity="warning"
+            disabled={!produto.ativo}
+            onClick={() => abrirMovimentacao("saida", produto)}
+          />
+          <Link className={styles.detailLink} href={`/produtos/${produto.id}`}>
+            Detalhes
+            <i className="pi pi-arrow-right" />
+          </Link>
+        </div>
+      </article>
+    );
+  }
+
   function atualizarCampoProduto(campo, valor) {
     setFormularioProduto((formularioAtual) => ({ ...formularioAtual, [campo]: valor }));
     setErrosProduto((errosAtuais) => ({ ...errosAtuais, [campo]: null }));
@@ -387,10 +476,14 @@ export default function PaginaEstoque() {
 
       <header className={styles.header}>
         <div>
+          <p className={styles.eyebrow}>Operação e abastecimento</p>
           <h1>Estoque</h1>
+          <p className={styles.headerDescription}>
+            Acompanhe saldos, validade e movimentações dos produtos.
+          </p>
         </div>
 
-        <Button label="Cadastrar Produto" icon="pi pi-plus" onClick={() => setModalProduto(true)} />
+        <Button label="Novo produto" icon="pi pi-plus" onClick={() => setModalProduto(true)} />
       </header>
 
       <div className={styles.panel}>
@@ -400,31 +493,67 @@ export default function PaginaEstoque() {
           </div>
         ) : null}
 
-        <div className={styles.summaryGrid}>
-          <article className={`${styles.summaryItem} ${styles.summaryDanger}`}>
+        <div className={styles.summaryGrid} aria-label="Resumo do estoque">
+          <button
+            className={`${styles.summaryItem} ${styles.summaryDanger} ${
+              filtroStatus === "estoque_baixo" ? styles.summaryActive : ""
+            }`}
+            type="button"
+            aria-pressed={filtroStatus === "estoque_baixo"}
+            onClick={() => aplicarFiltroStatus("estoque_baixo")}
+          >
+            <span className={styles.summaryIcon}><i className="pi pi-chart-line" /></span>
             <span>Estoque baixo</span>
             <strong>{produtosComEstoqueBaixo.length}</strong>
-          </article>
+          </button>
 
-          <article className={`${styles.summaryItem} ${styles.summaryDanger}`}>
-            <span>Produto vencido</span>
+          <button
+            className={`${styles.summaryItem} ${styles.summaryDanger} ${
+              filtroStatus === "vencido" ? styles.summaryActive : ""
+            }`}
+            type="button"
+            aria-pressed={filtroStatus === "vencido"}
+            onClick={() => aplicarFiltroStatus("vencido")}
+          >
+            <span className={styles.summaryIcon}><i className="pi pi-times-circle" /></span>
+            <span>Com estoque vencido</span>
             <strong>{produtosVencidos.length}</strong>
-          </article>
+          </button>
 
-          <article className={`${styles.summaryItem} ${styles.summaryWarning}`}>
+          <button
+            className={`${styles.summaryItem} ${styles.summaryWarning} ${
+              filtroStatus === "proximo_vencimento" ? styles.summaryActive : ""
+            }`}
+            type="button"
+            aria-pressed={filtroStatus === "proximo_vencimento"}
+            onClick={() => aplicarFiltroStatus("proximo_vencimento")}
+          >
+            <span className={styles.summaryIcon}><i className="pi pi-clock" /></span>
             <span>Próximo do vencimento</span>
             <strong>{produtosProximosVencimento.length}</strong>
-          </article>
+          </button>
 
-          <article className={styles.summaryItem}>
-            <span>Produto inativo</span>
+          <button
+            className={`${styles.summaryItem} ${
+              filtroStatus === "inativo" ? styles.summaryActive : ""
+            }`}
+            type="button"
+            aria-pressed={filtroStatus === "inativo"}
+            onClick={() => aplicarFiltroStatus("inativo")}
+          >
+            <span className={styles.summaryIcon}><i className="pi pi-ban" /></span>
+            <span>Produtos inativos</span>
             <strong>{produtosInativos.length}</strong>
-          </article>
+          </button>
         </div>
 
-        <div className={styles.toolbar}>
+        <div className={styles.tableSurface}>
+          <div className={styles.toolbar}>
           <div className={styles.toolbarTitle}>
             <h2>Produtos</h2>
+            <p>
+              {produtosFiltrados.length} de {produtos.length} produto(s)
+            </p>
           </div>
 
           <div className={styles.filters}>
@@ -455,51 +584,83 @@ export default function PaginaEstoque() {
 
             <Button label="Limpar filtros" text onClick={limparFiltrosTabela} />
           </div>
-        </div>
+          </div>
 
-        {produtos.length === 0 && !carregando ? (
-          <EstadoVazio
-            icone="pi pi-box"
-            titulo="Nenhum produto cadastrado ainda."
-            descricao="Cadastre o primeiro produto para iniciar o controle de estoque."
-            acao={<Button label="Cadastrar Produto" icon="pi pi-plus" onClick={() => setModalProduto(true)} />}
-          />
-        ) : (
-          <DataTable
-            value={produtosFiltrados}
-            dataKey="id"
-            loading={carregando}
-            globalFilter={filtroGlobal}
-            globalFilterFields={["nome"]}
-            emptyMessage="Nenhum produto corresponde aos filtros aplicados."
-            rowClassName={obterClasseLinha}
-            responsiveLayout="scroll"
-            paginator
-            rows={10}
-            rowsPerPageOptions={[10, 25, 50]}
-            paginatorTemplate="RowsPerPageDropdown FirstPageLink PrevPageLink CurrentPageReport NextPageLink LastPageLink"
-            currentPageReportTemplate="{first} a {last} de {totalRecords}"
-            sortField="nome"
-            sortOrder={1}
-          >
-            <Column field="nome" header="Produto" sortable />
-            <Column field="categoria" header="Categoria" sortable />
-            <Column
-              field="quantidade_atual"
-              header="Saldo"
-              body={renderizarSaldo}
-              sortable
+          {produtos.length === 0 && !carregando ? (
+            <EstadoVazio
+              icone="pi pi-box"
+              titulo="Nenhum produto cadastrado ainda."
+              descricao="Cadastre o primeiro produto para iniciar o controle de estoque."
+              acao={<Button label="Cadastrar Produto" icon="pi pi-plus" onClick={() => setModalProduto(true)} />}
             />
-            <Column
-              field="proxima_validade"
-              header="Validade"
-              body={(produto) => formatarData(produto.proxima_validade)}
-              sortable
-            />
-            <Column header="Status" body={renderizarStatus} />
-            <Column header="Ações" body={renderizarAcoes} />
-          </DataTable>
-        )}
+          ) : (
+            <>
+              <div className={styles.desktopTable}>
+                <DataTable
+                  value={produtosFiltrados}
+                  dataKey="id"
+                  loading={carregando}
+                  emptyMessage="Nenhum produto corresponde aos filtros aplicados."
+                  rowClassName={obterClasseLinha}
+                  responsiveLayout="scroll"
+                  paginator
+                  rows={10}
+                  rowsPerPageOptions={[10, 25, 50]}
+                  paginatorTemplate="RowsPerPageDropdown FirstPageLink PrevPageLink CurrentPageReport NextPageLink LastPageLink"
+                  currentPageReportTemplate="{first} a {last} de {totalRecords}"
+                  sortField="nome"
+                  sortOrder={1}
+                >
+                  <Column
+                    field="nome"
+                    header="Produto"
+                    sortable
+                    body={(produto) => (
+                        <Link className={styles.productName} href={`/produtos/${produto.id}`}>
+                          <ProdutoVisual nome={produto.nome} categoria={produto.categoria} />
+                          <span className={styles.productCopy}>
+                            <strong>{produto.nome}</strong>
+                            <small>
+                              <span>{produto.categoria}</span>
+                              <span>{produto.unidade_medida.toUpperCase()}</span>
+                              <span>{formatarMoeda(produto.preco_venda_padrao)}</span>
+                            </small>
+                          </span>
+                        </Link>
+                      )}
+                    style={{ minWidth: "290px" }}
+                  />
+                  <Column field="quantidade_atual" header="Estoque" body={renderizarSaldo} sortable />
+                  <Column
+                    field="proxima_validade"
+                    header="Próxima validade"
+                    body={(produto) => formatarData(produto.proxima_validade)}
+                    sortable
+                  />
+                  <Column header="Status" body={renderizarStatus} />
+                  <Column header="Ações" body={renderizarAcoes} />
+                </DataTable>
+              </div>
+
+              <div className={styles.mobileList}>
+                {carregando ? (
+                  Array.from({ length: 3 }, (_, indice) => (
+                    <div className={styles.mobileSkeleton} key={indice} />
+                  ))
+                ) : produtosFiltrados.length > 0 ? (
+                  produtosFiltrados.map(renderizarCartaoProduto)
+                ) : (
+                  <EstadoVazio
+                    icone="pi pi-filter-slash"
+                    titulo="Nenhum produto encontrado."
+                    descricao="Ajuste a busca ou limpe os filtros para ver outros itens."
+                    acao={<Button label="Limpar filtros" text onClick={limparFiltrosTabela} />}
+                  />
+                )}
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       <Dialog
