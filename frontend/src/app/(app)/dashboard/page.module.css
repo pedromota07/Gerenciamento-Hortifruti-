@@ -67,6 +67,125 @@
   flex: 1;
 }
 
+.filterPanel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 10px 28px rgba(31, 69, 48, 0.05);
+}
+
+.quickPeriods {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.quickPeriods span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.filterGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr)) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.filterGrid label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.filterGrid :global(.p-inputtext),
+.filterGrid :global(.p-inputnumber),
+.filterGrid :global(.p-inputnumber-input) {
+  width: 100%;
+}
+
+.healthPanel {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 14px 36px rgba(31, 69, 48, 0.055);
+}
+
+.healthScore {
+  display: grid;
+  width: 146px;
+  min-height: 128px;
+  place-items: center;
+  padding: 14px;
+  border-radius: 8px;
+  background: #eaf7ed;
+  color: var(--accent-strong);
+  text-align: center;
+}
+
+.healthScore span,
+.healthScore small {
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.healthScore strong {
+  font-size: 3rem;
+  line-height: 1;
+}
+
+.healthCopy h2 {
+  margin: 0 0 6px;
+  font-size: 1.35rem;
+  letter-spacing: 0;
+}
+
+.healthCopy p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.health_saudavel {
+  border-color: #bfe5c7;
+}
+
+.health_saudavel .healthScore {
+  background: #eaf7ed;
+  color: #237343;
+}
+
+.health_atencao {
+  border-color: #f6dca2;
+}
+
+.health_atencao .healthScore {
+  background: var(--warning-soft);
+  color: #805308;
+}
+
+.health_critica {
+  border-color: #efb8b4;
+}
+
+.health_critica .healthScore {
+  background: var(--danger-soft);
+  color: #a83833;
+}
+
 .metrics {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -203,7 +322,7 @@
 
 .summaryList li {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   padding: 10px 12px;
   border: 1px solid var(--border);
@@ -229,6 +348,10 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
   align-items: start;
+}
+
+.widePanel {
+  grid-column: span 2;
 }
 
 .alertCounter {
@@ -300,6 +423,11 @@
   font-size: 0.75rem;
 }
 
+.decisionContent small {
+  display: block;
+  margin-top: 2px;
+}
+
 .priorityTag {
   display: inline-flex;
   align-items: center;
@@ -309,6 +437,11 @@
   font-size: 0.68rem;
   font-weight: 900;
   white-space: nowrap;
+}
+
+.prioridadeCritica {
+  background: #ffe2df;
+  color: #8f201a;
 }
 
 .prioridadeAlta {
@@ -389,6 +522,73 @@
   font-weight: 800;
 }
 
+.chartGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(220px, 0.65fr);
+  gap: 16px;
+}
+
+.chartList {
+  display: grid;
+  gap: 9px;
+}
+
+.chartList > strong {
+  font-size: 0.88rem;
+}
+
+.chartRow {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) 92px;
+  gap: 9px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.chartRow div {
+  min-height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-soft);
+}
+
+.chartRow i {
+  display: block;
+  min-width: 2px;
+  height: 10px;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+.chartRow small {
+  color: var(--text);
+  text-align: right;
+}
+
+.miniStat {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f8fbf9;
+}
+
+.miniStat span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.miniStat strong {
+  color: var(--accent-strong);
+}
+
 .metricSkeleton,
 .rowSkeleton {
   border-radius: 8px;
@@ -416,13 +616,29 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .filterGrid {
+    grid-template-columns: repeat(2, minmax(180px, 1fr));
+  }
+
+  .filterGrid > button {
+    justify-self: start;
+  }
+
   .secondaryGrid {
     grid-template-columns: 1fr;
+  }
+
+  .widePanel {
+    grid-column: auto;
   }
 }
 
 @media (max-width: 900px) {
   .mainGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .chartGrid {
     grid-template-columns: 1fr;
   }
 }
@@ -455,6 +671,16 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .filterGrid,
+  .healthPanel {
+    grid-template-columns: 1fr;
+  }
+
+  .healthScore {
+    width: 100%;
+    min-height: 104px;
+  }
+
   .executivePanel,
   .attentionPanel,
   .recommendationPanel,
@@ -472,6 +698,15 @@
   .listFooter {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .chartRow {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .chartRow small {
+    grid-column: 1 / -1;
+    text-align: left;
   }
 }
 

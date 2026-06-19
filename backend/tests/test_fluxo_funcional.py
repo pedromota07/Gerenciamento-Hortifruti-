@@ -75,13 +75,13 @@ def registrar_entrada(client, headers, produto_id, quantidade, custo, data_entra
     )
 
 
-def registrar_saida(client, headers, produto_id, quantidade, subtipo, data_saida, preco=None):
+def registrar_saida(client, headers, produto_id, quantidade, subtipo, data_saida, preco=None, observacao="saida teste"):
     payload = {
         "produto_id": produto_id,
         "data": data_saida.isoformat(),
         "quantidade": quantidade,
         "subtipo": subtipo,
-        "observacao": "saida teste",
+        "observacao": observacao,
     }
 
     if preco is not None:
@@ -305,6 +305,21 @@ def test_dashboard_inteligente_retorna_prioridades_e_resumo_executivo(client):
         validade_dias=10,
         preco_venda="8.00",
     )
+    produto_margem_baixa = criar_produto(
+        client,
+        headers,
+        nome="Maca Margem Dashboard",
+        estoque_minimo="1.000",
+        validade_dias=10,
+        preco_venda="10.00",
+    )
+    produto_perda = criar_produto(
+        client,
+        headers,
+        nome="Morango Perda Dashboard",
+        estoque_minimo="1.000",
+        validade_dias=10,
+    )
     produto_vencido = criar_produto(
         client,
         headers,
@@ -317,11 +332,13 @@ def test_dashboard_inteligente_retorna_prioridades_e_resumo_executivo(client):
         headers,
         nome="Batata Dashboard",
         estoque_minimo="1.000",
-        validade_dias=10,
+        validade_dias=60,
     )
 
     assert registrar_entrada(client, headers, produto_estoque_baixo["id"], "3.000", "4.00", hoje).status_code == 201
     assert registrar_entrada(client, headers, produto_ruptura["id"], "9.000", "3.00", hoje).status_code == 201
+    assert registrar_entrada(client, headers, produto_margem_baixa["id"], "5.000", "9.50", hoje).status_code == 201
+    assert registrar_entrada(client, headers, produto_perda["id"], "5.000", "2.00", hoje).status_code == 201
     assert registrar_entrada(
         client,
         headers,
@@ -330,22 +347,47 @@ def test_dashboard_inteligente_retorna_prioridades_e_resumo_executivo(client):
         "2.50",
         hoje - timedelta(days=3),
     ).status_code == 201
-    assert registrar_entrada(client, headers, produto_parado["id"], "8.000", "2.00", hoje).status_code == 201
+    assert registrar_entrada(
+        client,
+        headers,
+        produto_parado["id"],
+        "8.000",
+        "2.00",
+        hoje - timedelta(days=40),
+    ).status_code == 201
     assert registrar_saida(
         client,
         headers,
         produto_ruptura["id"],
-        "7.000",
+        "8.000",
         "venda",
         hoje,
         preco="8.00",
+    ).status_code == 201
+    assert registrar_saida(
+        client,
+        headers,
+        produto_margem_baixa["id"],
+        "2.000",
+        "venda",
+        hoje,
+        preco="10.00",
+    ).status_code == 201
+    assert registrar_saida(
+        client,
+        headers,
+        produto_perda["id"],
+        "4.000",
+        "perda",
+        hoje,
+        observacao="perda por avaria no recebimento",
     ).status_code == 201
 
     resposta = client.get(
         (
             "/api/relatorios/dashboard-inteligente"
             f"?dias_previsao=7&dias_validade=3&data_inicial={(hoje - timedelta(days=6)).isoformat()}"
-            f"&data_final={hoje.isoformat()}"
+            f"&data_final={hoje.isoformat()}&limite=20"
         ),
         headers=headers,
     )
@@ -354,44 +396,76 @@ def test_dashboard_inteligente_retorna_prioridades_e_resumo_executivo(client):
     assert resposta.status_code == 200
     assert set(dados.keys()) == {
         "periodo_analise",
+        "saude_operacional",
         "kpis",
-        "alertas",
-        "sugestoes_reposicao",
-        "produtos_criticos",
-        "produtos_parados",
-        "mais_vendidos",
-        "validade",
         "resumo_executivo",
+        "prioridades_hoje",
+        "sugestoes_reposicao",
+        "risco_validade",
+        "produtos_parados",
+        "analise_margem",
+        "analise_perdas",
+        "mais_vendidos",
+        "series_graficos",
     }
-    assert dados["kpis"]["receita_total"] == pytest.approx(56.0)
-    assert dados["kpis"]["lucro_bruto_total"] == pytest.approx(35.0)
-    assert dados["kpis"]["perdas_total_custo"] == pytest.approx(0.0)
+    assert dados["saude_operacional"]["score"] >= 0
+    assert dados["saude_operacional"]["score"] <= 100
+    assert dados["saude_operacional"]["classificacao"] in {"critica", "atencao", "saudavel"}
+    assert dados["kpis"]["receita_total"] == pytest.approx(84.0)
+    assert dados["kpis"]["lucro_bruto_total"] == pytest.approx(41.0)
+    assert dados["kpis"]["perdas_total_custo"] == pytest.approx(8.0)
     assert dados["kpis"]["produtos_vencidos"] == 1
     assert dados["kpis"]["produtos_estoque_baixo"] >= 1
-    assert dados["kpis"]["total_alertas"] >= 4
+    assert dados["kpis"]["alertas_total"] >= 6
+    assert dados["kpis"]["alertas_criticos"] >= 2
     assert "Banana Dashboard" == dados["mais_vendidos"][0]["produto_nome"]
 
-    alertas = {(alerta["tipo"], alerta["produto_nome"]): alerta for alerta in dados["alertas"]}
-    assert alertas[("produto_vencido", "Alface Dashboard")]["prioridade"] == "alta"
-    assert alertas[("estoque_baixo", "Tomate Dashboard")]["prioridade"] == "alta"
-    assert alertas[("risco_ruptura", "Banana Dashboard")]["prioridade"] == "media"
+    prioridades = {(alerta["tipo"], alerta["produto_nome"]): alerta for alerta in dados["prioridades_hoje"]}
+    assert prioridades[("validade_vencida", "Alface Dashboard")]["prioridade"] == "critica"
+    assert prioridades[("validade_vencida", "Alface Dashboard")]["causa"]
+    assert prioridades[("validade_vencida", "Alface Dashboard")]["acao_sugerida"]
+    assert prioridades[("estoque_baixo", "Tomate Dashboard")]["prioridade"] in {"alta", "media"}
+    assert prioridades[("ruptura_prevista", "Banana Dashboard")]["prioridade"] == "critica"
+    assert prioridades[("margem_baixa", "Maca Margem Dashboard")]["prioridade"] == "alta"
+    assert prioridades[("perda_alta", "Morango Perda Dashboard")]["prioridade"] == "alta"
     assert any(produto["produto_nome"] == "Batata Dashboard" for produto in dados["produtos_parados"])
-    assert any(produto["produto_nome"] == "Tomate Dashboard" for produto in dados["sugestoes_reposicao"])
-    assert any("alertas" in frase for frase in dados["resumo_executivo"])
+    assert any(produto["produto_nome"] == "Banana Dashboard" for produto in dados["sugestoes_reposicao"])
+    assert any(item["produto_nome"] == "Morango Perda Dashboard" for item in dados["analise_perdas"])
+    assert any(item["produto_nome"] == "Maca Margem Dashboard" for item in dados["analise_margem"])
+    assert dados["risco_validade"]["valor_em_risco"] > 0
+    assert set(dados["series_graficos"].keys()) == {
+        "vendas_por_dia",
+        "perdas_por_tipo",
+        "top_produtos",
+        "alertas_por_tipo",
+    }
+    assert all(isinstance(item["mensagem"], str) for item in dados["resumo_executivo"])
+    ordem = {"critica": 0, "alta": 1, "media": 2, "baixa": 3}
+    prioridades_visiveis = dados["prioridades_hoje"]
+    assert prioridades_visiveis == sorted(
+        prioridades_visiveis,
+        key=lambda item: (ordem[item["prioridade"]], -item["pontuacao"]),
+    )
 
 
 def test_dashboard_inteligente_exige_jwt_e_valida_parametros(client):
     headers = autenticar(client)
     sem_token = client.get("/api/relatorios/dashboard-inteligente")
     dias_invalidos = client.get("/api/relatorios/dashboard-inteligente?dias_previsao=0", headers=headers)
+    limite_invalido = client.get("/api/relatorios/dashboard-inteligente?limite=0", headers=headers)
     periodo_invalido = client.get(
         "/api/relatorios/dashboard-inteligente?data_inicial=2026-01-10&data_final=2026-01-01",
         headers=headers,
     )
+    vazio = client.get("/api/relatorios/dashboard-inteligente", headers=headers)
 
     assert sem_token.status_code == 401
     assert dias_invalidos.status_code == 400
+    assert limite_invalido.status_code == 400
     assert periodo_invalido.status_code == 400
+    assert vazio.status_code == 200
+    assert vazio.get_json()["saude_operacional"]["score"] == 100
+    assert vazio.get_json()["prioridades_hoje"] == []
 
 
 def test_saidas_invalidas_nao_gravam_movimentacao(client, app):

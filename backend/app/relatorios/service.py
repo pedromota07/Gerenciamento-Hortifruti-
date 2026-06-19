@@ -1,5 +1,6 @@
+from collections import Counter
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import Decimal, ROUND_CEILING
 
 from sqlalchemy import func, select
 
@@ -139,64 +140,21 @@ class RelatorioService:
             "total_em_risco_custo": float(sum(item["valor_custo"] for item in proximos_vencimento)),
         }
 
-    def dashboard_inteligente(self, dias_previsao=7, dias_validade=3, data_inicial=None, data_final=None):
-        data_inicial, data_final = self._resolver_periodo_dashboard(
-            dias_previsao,
-            data_inicial,
-            data_final,
+    def dashboard_inteligente(
+        self,
+        dias_previsao=7,
+        dias_validade=3,
+        limite=10,
+        data_inicial=None,
+        data_final=None,
+    ):
+        return DashboardInteligenteService(self.session, self.today_provider).gerar(
+            dias_previsao=dias_previsao,
+            dias_validade=dias_validade,
+            limite=limite,
+            data_inicial=data_inicial,
+            data_final=data_final,
         )
-        dias_periodo = max((data_final - data_inicial).days + 1, 1)
-
-        financeiro = self.financeiro(data_inicial, data_final)
-        validade = self.validade(dias_validade)
-        mais_vendidos = self._mais_vendidos_dashboard(5, data_inicial, data_final)
-        vendas_por_produto = self._vendas_por_produto(data_inicial, data_final)
-        analises_produtos = self._analisar_produtos(vendas_por_produto, dias_periodo)
-
-        produtos_parados = self._montar_produtos_parados(analises_produtos)
-        alertas = self._montar_alertas_dashboard(analises_produtos, validade, produtos_parados)
-        sugestoes_reposicao = self._montar_sugestoes_reposicao(analises_produtos, dias_previsao)
-        produtos_criticos = self._montar_produtos_criticos(alertas, analises_produtos)
-
-        receita_total = Decimal(str(financeiro["receita_total"]))
-        lucro_bruto_total = Decimal(str(financeiro["lucro_bruto_total"]))
-        margem_lucro_percentual = (
-            (lucro_bruto_total / receita_total * Decimal("100"))
-            if receita_total > Decimal("0")
-            else Decimal("0")
-        )
-
-        kpis = {
-            "receita_total": financeiro["receita_total"],
-            "lucro_bruto_total": financeiro["lucro_bruto_total"],
-            "margem_lucro_percentual": self._float(margem_lucro_percentual, casas=2),
-            "perdas_total_custo": financeiro["perdas_total_custo"],
-            "valor_estoque_custo": financeiro["valor_estoque_custo"],
-            "valor_estoque_venda": financeiro["valor_estoque_venda"],
-            "total_alertas": len(alertas),
-            "produtos_vencidos": len(validade["vencidos"]),
-            "produtos_proximos_vencimento": len(validade["proximos_vencimento"]),
-            "produtos_estoque_baixo": sum(1 for produto in analises_produtos if produto["estoque_baixo"]),
-            "produtos_parados": len(produtos_parados),
-        }
-
-        return {
-            "periodo_analise": {
-                "data_inicial": data_inicial.isoformat(),
-                "data_final": data_final.isoformat(),
-                "dias_periodo": dias_periodo,
-                "dias_previsao": dias_previsao,
-                "dias_validade": dias_validade,
-            },
-            "kpis": kpis,
-            "alertas": alertas,
-            "sugestoes_reposicao": sugestoes_reposicao,
-            "produtos_criticos": produtos_criticos,
-            "produtos_parados": produtos_parados,
-            "mais_vendidos": mais_vendidos,
-            "validade": validade,
-            "resumo_executivo": self._montar_resumo_executivo(alertas, sugestoes_reposicao, validade, financeiro),
-        }
 
     def _apply_period_filters(self, statement, data_inicial, data_final):
         if data_inicial is not None:
@@ -204,382 +162,6 @@ class RelatorioService:
         if data_final is not None:
             statement = statement.where(Movimentacao.data <= data_final)
         return statement
-
-    def _resolver_periodo_dashboard(self, dias_previsao, data_inicial, data_final):
-        hoje = self.today_provider()
-
-        if data_inicial is None and data_final is None:
-            data_final = hoje
-            data_inicial = hoje - timedelta(days=dias_previsao - 1)
-        elif data_inicial is None:
-            data_inicial = data_final - timedelta(days=dias_previsao - 1)
-        elif data_final is None:
-            data_final = hoje
-
-        return data_inicial, data_final
-
-    def _vendas_por_produto(self, data_inicial, data_final):
-        statement = (
-            select(
-                Movimentacao.produto_id,
-                func.coalesce(func.sum(Movimentacao.quantidade), 0),
-                func.coalesce(func.sum(Movimentacao.receita_total), 0),
-                func.coalesce(func.sum(Movimentacao.lucro_bruto), 0),
-                func.count(Movimentacao.id),
-            )
-            .where(
-                Movimentacao.tipo == TipoMovimentacao.SAIDA,
-                Movimentacao.subtipo == SubtipoMovimentacao.VENDA,
-            )
-            .group_by(Movimentacao.produto_id)
-        )
-        statement = self._apply_period_filters(statement, data_inicial, data_final)
-
-        return {
-            produto_id: {
-                "quantidade_vendida": Decimal(str(quantidade_vendida or 0)),
-                "receita_total": Decimal(str(receita_total or 0)),
-                "lucro_bruto_total": Decimal(str(lucro_bruto_total or 0)),
-                "total_movimentacoes": total_movimentacoes,
-            }
-            for produto_id, quantidade_vendida, receita_total, lucro_bruto_total, total_movimentacoes
-            in self.session.execute(statement).all()
-        }
-
-    def _analisar_produtos(self, vendas_por_produto, dias_periodo):
-        hoje = self.today_provider()
-        produtos = self.session.execute(
-            select(Produto)
-            .where(Produto.ativo.is_(True))
-            .order_by(Produto.nome.asc(), Produto.id.asc())
-        ).scalars()
-        analises = []
-
-        for produto in produtos:
-            vendas = vendas_por_produto.get(
-                produto.id,
-                {
-                    "quantidade_vendida": Decimal("0"),
-                    "receita_total": Decimal("0"),
-                    "lucro_bruto_total": Decimal("0"),
-                    "total_movimentacoes": 0,
-                },
-            )
-            camadas_abertas = [
-                camada
-                for camada in produto.camadas_estoque
-                if camada.quantidade_disponivel > Decimal("0")
-            ]
-            estoque_disponivel_venda = sum(
-                (
-                    camada.quantidade_disponivel
-                    for camada in camadas_abertas
-                    if camada.data_validade >= hoje
-                ),
-                Decimal("0"),
-            )
-            valor_estoque_custo = sum(
-                (camada.quantidade_disponivel * camada.custo_unitario for camada in camadas_abertas),
-                Decimal("0"),
-            )
-            media_venda_diaria = vendas["quantidade_vendida"] / Decimal(dias_periodo)
-            dias_ate_acabar = (
-                estoque_disponivel_venda / media_venda_diaria
-                if media_venda_diaria > Decimal("0")
-                else None
-            )
-
-            analises.append(
-                {
-                    "produto_id": produto.id,
-                    "produto_nome": produto.nome,
-                    "categoria": produto.categoria.value,
-                    "unidade_medida": produto.unidade_medida.value,
-                    "estoque_atual": produto.quantidade_atual,
-                    "estoque_minimo": produto.estoque_minimo,
-                    "estoque_disponivel_venda": estoque_disponivel_venda,
-                    "preco_venda_padrao": produto.preco_venda_padrao,
-                    "valor_estoque_custo": valor_estoque_custo,
-                    "quantidade_vendida_periodo": vendas["quantidade_vendida"],
-                    "receita_total": vendas["receita_total"],
-                    "lucro_bruto_total": vendas["lucro_bruto_total"],
-                    "total_movimentacoes": vendas["total_movimentacoes"],
-                    "media_venda_diaria": media_venda_diaria,
-                    "dias_estimados_ate_acabar": dias_ate_acabar,
-                    "estoque_baixo": produto.quantidade_atual <= produto.estoque_minimo,
-                }
-            )
-
-        return analises
-
-    def _montar_alerta(self, prioridade, tipo, produto_id, produto_nome, mensagem, acao_sugerida, extras=None):
-        alerta = {
-            "prioridade": prioridade,
-            "tipo": tipo,
-            "produto_id": produto_id,
-            "produto_nome": produto_nome,
-            "mensagem": mensagem,
-            "acao_sugerida": acao_sugerida,
-        }
-        if extras:
-            alerta.update(extras)
-        return alerta
-
-    def _mais_vendidos_dashboard(self, limite, data_inicial, data_final):
-        ranking = self.mais_vendidos(limite, data_inicial, data_final)
-
-        if len(ranking) >= limite:
-            return ranking
-
-        produtos_incluidos = {produto["produto_id"] for produto in ranking}
-
-        for produto in self.mais_vendidos(limite):
-            if produto["produto_id"] in produtos_incluidos:
-                continue
-
-            ranking.append(produto)
-            produtos_incluidos.add(produto["produto_id"])
-
-            if len(ranking) == limite:
-                break
-
-        return ranking
-
-    def _montar_alertas_dashboard(self, analises_produtos, validade, produtos_parados):
-        alertas = []
-
-        for produto in validade["vencidos"]:
-            alertas.append(
-                self._montar_alerta(
-                    "alta",
-                    "produto_vencido",
-                    produto["produto_id"],
-                    produto["produto_nome"],
-                    f"{produto['produto_nome']} possui estoque vencido.",
-                    "Registrar perda",
-                    {
-                        "quantidade": produto["quantidade_total"],
-                        "unidade_medida": produto["unidade_medida"],
-                    },
-                )
-            )
-
-        for produto in analises_produtos:
-            if produto["estoque_baixo"]:
-                alertas.append(
-                    self._montar_alerta(
-                        "alta",
-                        "estoque_baixo",
-                        produto["produto_id"],
-                        produto["produto_nome"],
-                        f"{produto['produto_nome']} está abaixo ou igual ao estoque mínimo.",
-                        "Repor estoque",
-                        self._serializar_metricas_produto(produto),
-                    )
-                )
-
-            dias_ate_acabar = produto["dias_estimados_ate_acabar"]
-            if dias_ate_acabar is not None:
-                if dias_ate_acabar <= Decimal("1"):
-                    prioridade = "alta"
-                elif dias_ate_acabar <= Decimal("3"):
-                    prioridade = "media"
-                else:
-                    prioridade = None
-
-                if prioridade:
-                    alertas.append(
-                        self._montar_alerta(
-                            prioridade,
-                            "risco_ruptura",
-                            produto["produto_id"],
-                            produto["produto_nome"],
-                            f"{produto['produto_nome']} pode acabar em {self._formatar_dias(dias_ate_acabar)}.",
-                            "Repor estoque",
-                            self._serializar_metricas_produto(produto),
-                        )
-                    )
-
-        for produto in validade["proximos_vencimento"]:
-            alertas.append(
-                self._montar_alerta(
-                    "media",
-                    "proximo_vencimento",
-                    produto["produto_id"],
-                    produto["produto_nome"],
-                    f"{produto['produto_nome']} tem itens próximos do vencimento.",
-                    "Fazer promoção",
-                    {
-                        "quantidade": produto["quantidade_total"],
-                        "unidade_medida": produto["unidade_medida"],
-                        "proxima_validade": produto["proxima_validade"],
-                    },
-                )
-            )
-
-        for produto in produtos_parados:
-            alertas.append(
-                self._montar_alerta(
-                    "baixa",
-                    "produto_parado",
-                    produto["produto_id"],
-                    produto["produto_nome"],
-                    f"{produto['produto_nome']} está sem venda recente e com estoque parado.",
-                    "Acompanhar giro",
-                    {
-                        "estoque_atual": produto["estoque_atual"],
-                        "unidade_medida": produto["unidade_medida"],
-                        "valor_estoque_custo": produto["valor_estoque_custo"],
-                    },
-                )
-            )
-
-        return sorted(alertas, key=lambda alerta: (self._ordem_prioridade(alerta["prioridade"]), alerta["produto_nome"]))
-
-    def _montar_sugestoes_reposicao(self, analises_produtos, dias_previsao):
-        sugestoes = []
-
-        for produto in analises_produtos:
-            dias_ate_acabar = produto["dias_estimados_ate_acabar"]
-            deve_repor = produto["estoque_baixo"] or (
-                dias_ate_acabar is not None and dias_ate_acabar <= Decimal("3")
-            )
-
-            if not deve_repor:
-                continue
-
-            if produto["estoque_baixo"] or (dias_ate_acabar is not None and dias_ate_acabar <= Decimal("1")):
-                prioridade = "alta"
-            else:
-                prioridade = "media"
-
-            demanda_prevista = produto["media_venda_diaria"] * Decimal(dias_previsao)
-            quantidade_sugerida = demanda_prevista + produto["estoque_minimo"] - produto["estoque_disponivel_venda"]
-
-            if quantidade_sugerida <= Decimal("0") and produto["estoque_baixo"]:
-                quantidade_sugerida = produto["estoque_minimo"] - produto["estoque_atual"]
-
-            quantidade_sugerida = max(quantidade_sugerida, Decimal("0"))
-
-            sugestoes.append(
-                {
-                    **self._serializar_metricas_produto(produto),
-                    "prioridade": prioridade,
-                    "quantidade_sugerida": self._float(quantidade_sugerida),
-                    "mensagem": f"Priorizar reposição de {produto['produto_nome']}.",
-                    "acao_sugerida": "Repor estoque",
-                }
-            )
-
-        return sorted(
-            sugestoes,
-            key=lambda item: (self._ordem_prioridade(item["prioridade"]), item["dias_estimados_ate_acabar"] or 999999),
-        )
-
-    def _montar_produtos_parados(self, analises_produtos):
-        produtos = [
-            {
-                **self._serializar_metricas_produto(produto),
-                "prioridade": "baixa",
-                "mensagem": f"{produto['produto_nome']} não teve venda no período analisado.",
-                "acao_sugerida": "Acompanhar giro",
-            }
-            for produto in analises_produtos
-            if produto["estoque_atual"] > Decimal("0")
-            and produto["quantidade_vendida_periodo"] == Decimal("0")
-        ]
-
-        return sorted(produtos, key=lambda item: item["valor_estoque_custo"], reverse=True)
-
-    def _montar_produtos_criticos(self, alertas, analises_produtos):
-        analises_por_id = {produto["produto_id"]: produto for produto in analises_produtos}
-        produtos_criticos = []
-        produtos_incluidos = set()
-
-        for alerta in alertas:
-            if alerta["prioridade"] != "alta" or alerta["produto_id"] in produtos_incluidos:
-                continue
-
-            produto = analises_por_id.get(alerta["produto_id"])
-            if produto is None:
-                produtos_criticos.append(
-                    {
-                        "produto_id": alerta["produto_id"],
-                        "produto_nome": alerta["produto_nome"],
-                        "prioridade": "alta",
-                        "motivo": alerta["mensagem"],
-                        "acao_sugerida": alerta["acao_sugerida"],
-                    }
-                )
-            else:
-                produtos_criticos.append(
-                    {
-                        **self._serializar_metricas_produto(produto),
-                        "prioridade": "alta",
-                        "motivo": alerta["mensagem"],
-                        "acao_sugerida": alerta["acao_sugerida"],
-                    }
-                )
-
-            produtos_incluidos.add(alerta["produto_id"])
-
-        return produtos_criticos
-
-    def _montar_resumo_executivo(self, alertas, sugestoes_reposicao, validade, financeiro):
-        resumo = []
-        alertas_alta = [alerta for alerta in alertas if alerta["prioridade"] == "alta"]
-
-        if alertas:
-            resumo.append(f"Existem {len(alertas)} alertas que precisam de atenção hoje.")
-
-        if alertas_alta:
-            resumo.append(f"{len(alertas_alta)} alertas são críticos e devem ser tratados primeiro.")
-
-        if sugestoes_reposicao:
-            produto = sugestoes_reposicao[0]
-            resumo.append(f"O produto {produto['produto_nome']} deve ser priorizado na próxima reposição.")
-
-        if financeiro["perdas_total_custo"] > 0:
-            resumo.append(f"Há R$ {financeiro['perdas_total_custo']:.2f} em perdas registradas.")
-
-        if validade["proximos_vencimento"]:
-            resumo.append("Existem produtos próximos do vencimento que podem virar perda.")
-
-        if not resumo:
-            resumo.append("Nenhum alerta crítico encontrado no momento.")
-
-        return resumo
-
-    def _serializar_metricas_produto(self, produto):
-        return {
-            "produto_id": produto["produto_id"],
-            "produto_nome": produto["produto_nome"],
-            "categoria": produto["categoria"],
-            "unidade_medida": produto["unidade_medida"],
-            "estoque_atual": self._float(produto["estoque_atual"]),
-            "estoque_minimo": self._float(produto["estoque_minimo"]),
-            "estoque_disponivel_venda": self._float(produto["estoque_disponivel_venda"]),
-            "quantidade_vendida_periodo": self._float(produto["quantidade_vendida_periodo"]),
-            "media_venda_diaria": self._float(produto["media_venda_diaria"]),
-            "dias_estimados_ate_acabar": (
-                self._float(produto["dias_estimados_ate_acabar"], casas=1)
-                if produto["dias_estimados_ate_acabar"] is not None
-                else None
-            ),
-            "valor_estoque_custo": self._float(produto["valor_estoque_custo"], casas=2),
-        }
-
-    def _ordem_prioridade(self, prioridade):
-        return {"alta": 0, "media": 1, "baixa": 2}.get(prioridade, 3)
-
-    def _float(self, valor, casas=3):
-        return round(float(valor or 0), casas)
-
-    def _formatar_dias(self, dias):
-        if dias <= Decimal("1"):
-            return "até 1 dia"
-
-        return f"{self._float(dias, casas=1)} dias"
 
     def _build_validade_statement(self, data_minima, data_maxima=None):
         valor_custo = func.sum(CamadaEstoque.quantidade_disponivel * CamadaEstoque.custo_unitario)
@@ -638,3 +220,947 @@ class RelatorioService:
                 proxima_validade,
             ) in rows
         ]
+
+
+class DashboardInteligenteService:
+    PRIORIDADE_ORDEM = {"critica": 0, "alta": 1, "media": 2, "baixa": 3}
+    MARGEM_BAIXA_PERCENTUAL = Decimal("20")
+
+    def __init__(self, session, today_provider=date.today):
+        self.session = session
+        self.today_provider = today_provider
+
+    def gerar(self, dias_previsao=7, dias_validade=3, limite=10, data_inicial=None, data_final=None):
+        hoje = self.today_provider()
+        data_inicial, data_final = self._resolver_periodo(data_inicial, data_final, hoje)
+        dias_periodo = max((data_final - data_inicial).days + 1, 1)
+
+        relatorios = RelatorioService(self.session, self.today_provider)
+        financeiro = relatorios.financeiro(data_inicial, data_final)
+        mais_vendidos = relatorios.mais_vendidos(limite, data_inicial, data_final)
+        vendas_por_produto = self._vendas_por_produto(data_inicial, data_final)
+        ultimas_vendas = self._ultimas_vendas_por_produto()
+        analises_produtos = self._analisar_produtos(vendas_por_produto, ultimas_vendas, dias_periodo, hoje)
+        risco_validade = self._analisar_validade(dias_validade, limite, hoje)
+        produtos_parados = self._montar_produtos_parados(analises_produtos, limite)
+        analise_margem = self._montar_analise_margem(analises_produtos, limite)
+        analise_perdas, perdas_por_tipo = self._montar_analise_perdas(data_inicial, data_final, limite)
+        receita_total = self._decimal(financeiro["receita_total"])
+        lucro_bruto_total = self._decimal(financeiro["lucro_bruto_total"])
+        perdas_total_custo = self._decimal(financeiro["perdas_total_custo"])
+        margem_geral = self._percentual(lucro_bruto_total, receita_total)
+        perdas_relevantes = perdas_total_custo > Decimal("0") and (
+            lucro_bruto_total <= Decimal("0")
+            or perdas_total_custo / lucro_bruto_total >= Decimal("0.15")
+        )
+        sugestoes_reposicao = self._montar_sugestoes_reposicao(analises_produtos, dias_previsao, limite)
+        prioridades = self._montar_prioridades(
+            analises_produtos,
+            risco_validade,
+            produtos_parados,
+            analise_margem,
+            analise_perdas,
+            perdas_relevantes,
+        )
+
+        alertas_criticos = sum(1 for prioridade in prioridades if prioridade["prioridade"] == "critica")
+        saude_operacional = self._calcular_saude_operacional(
+            prioridades,
+            risco_validade,
+            analises_produtos,
+            produtos_parados,
+            perdas_total_custo,
+            lucro_bruto_total,
+            margem_geral,
+        )
+
+        kpis = {
+            "receita_total": self._float(receita_total, 2),
+            "lucro_bruto_total": self._float(lucro_bruto_total, 2),
+            "margem_lucro_percentual": self._float(margem_geral, 2),
+            "valor_estoque_custo": financeiro["valor_estoque_custo"],
+            "valor_estoque_venda": financeiro["valor_estoque_venda"],
+            "perdas_total_custo": self._float(perdas_total_custo, 2),
+            "alertas_total": len(prioridades),
+            "alertas_criticos": alertas_criticos,
+            "produtos_vencidos": len(risco_validade["vencidos"]),
+            "produtos_proximos_vencimento": len(risco_validade["proximos_vencimento"]),
+            "produtos_estoque_baixo": sum(1 for produto in analises_produtos if produto["estoque_baixo"]),
+            "produtos_parados": len(produtos_parados),
+            "total_alertas": len(prioridades),
+        }
+
+        return {
+            "periodo_analise": {
+                "data_inicial": data_inicial.isoformat(),
+                "data_final": data_final.isoformat(),
+                "dias_periodo": dias_periodo,
+                "dias_previsao": dias_previsao,
+                "dias_validade": dias_validade,
+            },
+            "saude_operacional": saude_operacional,
+            "kpis": kpis,
+            "resumo_executivo": self._montar_resumo_executivo(
+                prioridades,
+                sugestoes_reposicao,
+                risco_validade,
+                analise_margem,
+                analise_perdas,
+                saude_operacional,
+            ),
+            "prioridades_hoje": self._limitar_prioridades(prioridades, limite),
+            "sugestoes_reposicao": sugestoes_reposicao,
+            "risco_validade": risco_validade,
+            "produtos_parados": produtos_parados,
+            "analise_margem": analise_margem,
+            "analise_perdas": analise_perdas,
+            "mais_vendidos": mais_vendidos,
+            "series_graficos": {
+                "vendas_por_dia": self._serie_vendas_por_dia(data_inicial, data_final),
+                "perdas_por_tipo": perdas_por_tipo,
+                "top_produtos": [
+                    {
+                        "produto_id": item["produto_id"],
+                        "produto_nome": item["produto_nome"],
+                        "total_vendido": item["total_vendido"],
+                        "receita_total": item["receita_total"],
+                    }
+                    for item in mais_vendidos
+                ],
+                "alertas_por_tipo": self._alertas_por_tipo(prioridades),
+            },
+        }
+
+    def _resolver_periodo(self, data_inicial, data_final, hoje):
+        if data_inicial is None and data_final is None:
+            data_final = hoje
+            data_inicial = hoje - timedelta(days=29)
+        elif data_inicial is None:
+            data_inicial = data_final - timedelta(days=29)
+        elif data_final is None:
+            data_final = hoje
+
+        return data_inicial, data_final
+
+    def _vendas_por_produto(self, data_inicial, data_final):
+        statement = (
+            select(
+                Movimentacao.produto_id,
+                func.coalesce(func.sum(Movimentacao.quantidade), 0),
+                func.coalesce(func.sum(Movimentacao.receita_total), 0),
+                func.coalesce(func.sum(Movimentacao.custo_total), 0),
+                func.coalesce(func.sum(Movimentacao.lucro_bruto), 0),
+                func.count(Movimentacao.id),
+                func.max(Movimentacao.data),
+            )
+            .where(
+                Movimentacao.tipo == TipoMovimentacao.SAIDA,
+                Movimentacao.subtipo == SubtipoMovimentacao.VENDA,
+                Movimentacao.data >= data_inicial,
+                Movimentacao.data <= data_final,
+            )
+            .group_by(Movimentacao.produto_id)
+        )
+
+        return {
+            produto_id: {
+                "quantidade_vendida": self._decimal(quantidade_vendida),
+                "receita_total": self._decimal(receita_total),
+                "custo_total": self._decimal(custo_total),
+                "lucro_bruto_total": self._decimal(lucro_bruto_total),
+                "total_movimentacoes": total_movimentacoes,
+                "ultima_venda_periodo": ultima_venda,
+            }
+            for (
+                produto_id,
+                quantidade_vendida,
+                receita_total,
+                custo_total,
+                lucro_bruto_total,
+                total_movimentacoes,
+                ultima_venda,
+            ) in self.session.execute(statement).all()
+        }
+
+    def _ultimas_vendas_por_produto(self):
+        rows = self.session.execute(
+            select(Movimentacao.produto_id, func.max(Movimentacao.data))
+            .where(
+                Movimentacao.tipo == TipoMovimentacao.SAIDA,
+                Movimentacao.subtipo == SubtipoMovimentacao.VENDA,
+            )
+            .group_by(Movimentacao.produto_id)
+        ).all()
+        return {produto_id: ultima_data for produto_id, ultima_data in rows}
+
+    def _analisar_produtos(self, vendas_por_produto, ultimas_vendas, dias_periodo, hoje):
+        produtos = self.session.execute(
+            select(Produto)
+            .where(Produto.ativo.is_(True))
+            .order_by(Produto.nome.asc(), Produto.id.asc())
+        ).scalars()
+        analises = []
+
+        for produto in produtos:
+            vendas = vendas_por_produto.get(
+                produto.id,
+                {
+                    "quantidade_vendida": Decimal("0"),
+                    "receita_total": Decimal("0"),
+                    "custo_total": Decimal("0"),
+                    "lucro_bruto_total": Decimal("0"),
+                    "total_movimentacoes": 0,
+                    "ultima_venda_periodo": None,
+                },
+            )
+            camadas_abertas = [
+                camada
+                for camada in produto.camadas_estoque
+                if camada.quantidade_disponivel > Decimal("0")
+            ]
+            estoque_vendavel = sum(
+                (
+                    camada.quantidade_disponivel
+                    for camada in camadas_abertas
+                    if camada.data_validade >= hoje
+                ),
+                Decimal("0"),
+            )
+            valor_estoque_custo = sum(
+                (camada.quantidade_disponivel * camada.custo_unitario for camada in camadas_abertas),
+                Decimal("0"),
+            )
+            primeira_entrada_aberta = min((camada.data_entrada for camada in camadas_abertas), default=None)
+            media_venda_diaria = vendas["quantidade_vendida"] / Decimal(dias_periodo)
+            dias_cobertura = (
+                estoque_vendavel / media_venda_diaria
+                if media_venda_diaria > Decimal("0")
+                else None
+            )
+            ultima_venda = ultimas_vendas.get(produto.id)
+            dias_sem_venda = (hoje - ultima_venda).days if ultima_venda else None
+            margem_percentual = self._percentual(vendas["lucro_bruto_total"], vendas["receita_total"])
+
+            analises.append(
+                {
+                    "produto_id": produto.id,
+                    "produto_nome": produto.nome,
+                    "categoria": produto.categoria.value,
+                    "unidade_medida": produto.unidade_medida.value,
+                    "estoque_atual": produto.quantidade_atual,
+                    "estoque_minimo": produto.estoque_minimo,
+                    "estoque_disponivel_venda": estoque_vendavel,
+                    "valor_estoque_custo": valor_estoque_custo,
+                    "quantidade_vendida_periodo": vendas["quantidade_vendida"],
+                    "receita_total": vendas["receita_total"],
+                    "custo_total": vendas["custo_total"],
+                    "lucro_bruto_total": vendas["lucro_bruto_total"],
+                    "margem_percentual": margem_percentual,
+                    "total_movimentacoes": vendas["total_movimentacoes"],
+                    "media_venda_diaria": media_venda_diaria,
+                    "dias_cobertura": dias_cobertura,
+                    "estoque_baixo": estoque_vendavel <= produto.estoque_minimo,
+                    "ultima_venda": ultima_venda,
+                    "dias_sem_venda": dias_sem_venda,
+                    "primeira_entrada_aberta": primeira_entrada_aberta,
+                }
+            )
+
+        return analises
+
+    def _analisar_validade(self, dias_validade, limite, hoje):
+        limite_validade = hoje + timedelta(days=dias_validade)
+        agrupados = {}
+        rows = self.session.execute(
+            select(CamadaEstoque, Produto)
+            .join(Produto, Produto.id == CamadaEstoque.produto_id)
+            .where(
+                Produto.ativo.is_(True),
+                CamadaEstoque.quantidade_disponivel > Decimal("0"),
+                CamadaEstoque.data_validade <= limite_validade,
+            )
+            .order_by(CamadaEstoque.data_validade.asc(), Produto.nome.asc())
+        ).all()
+
+        for camada, produto in rows:
+            chave = (
+                "vencidos"
+                if camada.data_validade < hoje
+                else "proximos_vencimento"
+            )
+            item = agrupados.setdefault(
+                (chave, produto.id),
+                {
+                    "produto_id": produto.id,
+                    "produto_nome": produto.nome,
+                    "categoria": produto.categoria.value,
+                    "unidade_medida": produto.unidade_medida.value,
+                    "quantidade_em_risco": Decimal("0"),
+                    "valor_em_risco": Decimal("0"),
+                    "data_validade": camada.data_validade,
+                },
+            )
+            item["quantidade_em_risco"] += camada.quantidade_disponivel
+            item["valor_em_risco"] += camada.quantidade_disponivel * camada.custo_unitario
+            item["data_validade"] = min(item["data_validade"], camada.data_validade)
+
+        vencidos = []
+        proximos = []
+        for (grupo, _produto_id), item in agrupados.items():
+            dias_para_vencer = (item["data_validade"] - hoje).days
+            quantidade = item["quantidade_em_risco"]
+            valor = item["valor_em_risco"]
+            custo_unitario = valor / quantidade if quantidade > Decimal("0") else Decimal("0")
+            serializado = {
+                **{key: item[key] for key in ("produto_id", "produto_nome", "categoria", "unidade_medida")},
+                "quantidade_em_risco": self._float(quantidade),
+                "quantidade_total": self._float(quantidade),
+                "custo_unitario_medio": self._float(custo_unitario, 2),
+                "valor_em_risco": self._float(valor, 2),
+                "valor_custo": self._float(valor, 2),
+                "dias_para_vencer": dias_para_vencer,
+                "data_validade": item["data_validade"].isoformat(),
+                "proxima_validade": item["data_validade"].isoformat(),
+                "acao_sugerida": self._acao_validade(dias_para_vencer),
+            }
+            if grupo == "vencidos":
+                vencidos.append(serializado)
+            else:
+                proximos.append(serializado)
+
+        vencidos.sort(key=lambda item: (-item["valor_em_risco"], item["produto_nome"]))
+        proximos.sort(key=lambda item: (item["dias_para_vencer"], -item["valor_em_risco"], item["produto_nome"]))
+        valor_total = sum(item["valor_em_risco"] for item in vencidos + proximos)
+
+        return {
+            "vencidos": vencidos[:limite],
+            "proximos_vencimento": proximos[:limite],
+            "valor_em_risco": self._float(valor_total, 2),
+            "acao_geral_sugerida": (
+                "Retirar vencidos imediatamente e priorizar promocao dos itens proximos."
+                if valor_total > 0
+                else "Sem acao emergencial de validade no momento."
+            ),
+        }
+
+    def _montar_produtos_parados(self, analises_produtos, limite):
+        produtos = []
+        for produto in analises_produtos:
+            if produto["estoque_disponivel_venda"] <= Decimal("0"):
+                continue
+
+            sem_venda_recente = (
+                produto["dias_sem_venda"] is None
+                or produto["dias_sem_venda"] >= 30
+            )
+            estoque_antigo = (
+                produto["primeira_entrada_aberta"] is None
+                or (self.today_provider() - produto["primeira_entrada_aberta"]).days >= 15
+            )
+            baixo_giro = (
+                produto["media_venda_diaria"] > Decimal("0")
+                and produto["dias_cobertura"] is not None
+                and produto["dias_cobertura"] >= Decimal("30")
+            )
+
+            if not ((sem_venda_recente and estoque_antigo) or baixo_giro):
+                continue
+
+            acao = "Fazer promocao" if produto["valor_estoque_custo"] > Decimal("50") else "Reposicionar exposicao"
+            produtos.append(
+                {
+                    **self._metricas_produto(produto),
+                    "valor_parado_custo": self._float(produto["valor_estoque_custo"], 2),
+                    "dias_sem_venda": produto["dias_sem_venda"],
+                    "prioridade": "baixa",
+                    "acao_sugerida": acao,
+                    "mensagem": f"{produto['produto_nome']} esta com estoque e sem giro recente.",
+                }
+            )
+
+        return sorted(produtos, key=lambda item: item["valor_parado_custo"], reverse=True)[:limite]
+
+    def _montar_analise_margem(self, analises_produtos, limite):
+        analises = []
+        for produto in analises_produtos:
+            if produto["quantidade_vendida_periodo"] <= Decimal("0"):
+                continue
+
+            margem = produto["margem_percentual"]
+            if margem < Decimal("10"):
+                classificacao = "critica"
+                prioridade = "alta"
+                acao = "Revisar preco de venda e custo de compra"
+            elif margem < Decimal("20"):
+                classificacao = "baixa"
+                prioridade = "media"
+                acao = "Renegociar custo de compra"
+            elif margem < Decimal("35"):
+                classificacao = "saudavel"
+                prioridade = "baixa"
+                acao = "Acompanhar margem"
+            else:
+                classificacao = "boa"
+                prioridade = "baixa"
+                acao = "Manter estrategia comercial"
+
+            analises.append(
+                {
+                    "produto_id": produto["produto_id"],
+                    "produto_nome": produto["produto_nome"],
+                    "categoria": produto["categoria"],
+                    "unidade_medida": produto["unidade_medida"],
+                    "receita_total": self._float(produto["receita_total"], 2),
+                    "custo_total": self._float(produto["custo_total"], 2),
+                    "lucro_bruto_total": self._float(produto["lucro_bruto_total"], 2),
+                    "margem_percentual": self._float(margem, 2),
+                    "classificacao": classificacao,
+                    "prioridade": prioridade,
+                    "acao_sugerida": acao,
+                }
+            )
+
+        return sorted(analises, key=lambda item: (item["margem_percentual"], -item["receita_total"]))[:limite]
+
+    def _montar_analise_perdas(self, data_inicial, data_final, limite):
+        rows = self.session.execute(
+            select(Movimentacao, Produto)
+            .join(Produto, Produto.id == Movimentacao.produto_id)
+            .where(
+                Movimentacao.tipo == TipoMovimentacao.SAIDA,
+                Movimentacao.subtipo == SubtipoMovimentacao.PERDA,
+                Movimentacao.data >= data_inicial,
+                Movimentacao.data <= data_final,
+            )
+            .order_by(Movimentacao.data.desc(), Movimentacao.id.desc())
+        ).all()
+        por_produto = {}
+        por_tipo = Counter()
+        custo_por_tipo = Counter()
+
+        for movimentacao, produto in rows:
+            tipo_perda = self._classificar_perda(movimentacao.observacao)
+            custo = self._decimal(movimentacao.custo_total)
+            por_tipo[tipo_perda] += 1
+            custo_por_tipo[tipo_perda] += float(custo)
+            item = por_produto.setdefault(
+                produto.id,
+                {
+                    "produto_id": produto.id,
+                    "produto_nome": produto.nome,
+                    "categoria": produto.categoria.value,
+                    "unidade_medida": produto.unidade_medida.value,
+                    "quantidade_total": Decimal("0"),
+                    "custo_total": Decimal("0"),
+                    "total_registros": 0,
+                    "tipos": Counter(),
+                    "acao_sugerida": "Melhorar controle de validade",
+                },
+            )
+            item["quantidade_total"] += movimentacao.quantidade
+            item["custo_total"] += custo
+            item["total_registros"] += 1
+            item["tipos"][tipo_perda] += 1
+            if tipo_perda == "avaria":
+                item["acao_sugerida"] = "Melhorar manuseio e conferencia de recebimento"
+            elif tipo_perda == "vencimento":
+                item["acao_sugerida"] = "Aumentar giro com promocao e reduzir compra"
+
+        analise = [
+            {
+                **{key: item[key] for key in ("produto_id", "produto_nome", "categoria", "unidade_medida")},
+                "quantidade_total": self._float(item["quantidade_total"]),
+                "custo_total": self._float(item["custo_total"], 2),
+                "total_registros": item["total_registros"],
+                "principal_tipo": item["tipos"].most_common(1)[0][0],
+                "acao_sugerida": item["acao_sugerida"],
+            }
+            for item in por_produto.values()
+        ]
+        analise.sort(key=lambda item: item["custo_total"], reverse=True)
+        perdas_por_tipo = [
+            {
+                "tipo": tipo,
+                "total_registros": por_tipo[tipo],
+                "custo_total": round(custo_por_tipo[tipo], 2),
+            }
+            for tipo in sorted(por_tipo)
+        ]
+        return analise[:limite], perdas_por_tipo
+
+    def _montar_sugestoes_reposicao(self, analises_produtos, dias_previsao, limite):
+        sugestoes = []
+        for produto in analises_produtos:
+            media = produto["media_venda_diaria"]
+            if media <= Decimal("0"):
+                continue
+
+            dias_cobertura = produto["dias_cobertura"]
+            if not produto["estoque_baixo"] and (dias_cobertura is None or dias_cobertura > Decimal("7")):
+                continue
+
+            if dias_cobertura is not None and dias_cobertura <= Decimal("1"):
+                prioridade = "critica"
+            elif dias_cobertura is not None and dias_cobertura <= Decimal("3"):
+                prioridade = "alta"
+            elif dias_cobertura is not None and dias_cobertura <= Decimal("7"):
+                prioridade = "media"
+            else:
+                prioridade = "alta"
+
+            quantidade_sugerida = (
+                media * Decimal(dias_previsao)
+                + produto["estoque_minimo"]
+                - produto["estoque_disponivel_venda"]
+            )
+            quantidade_sugerida = max(quantidade_sugerida, Decimal("0"))
+            quantidade_sugerida = self._arredondar_quantidade(quantidade_sugerida, produto["unidade_medida"])
+            cobertura_texto = self._formatar_dias(dias_cobertura) if dias_cobertura is not None else "sem cobertura calculada"
+            sugestoes.append(
+                {
+                    **self._metricas_produto(produto),
+                    "venda_total_periodo": self._float(produto["quantidade_vendida_periodo"]),
+                    "media_venda_diaria": self._float(media),
+                    "dias_cobertura": self._float(dias_cobertura, 1) if dias_cobertura is not None else None,
+                    "quantidade_sugerida": self._float(quantidade_sugerida),
+                    "prioridade": prioridade,
+                    "justificativa": (
+                        f"Comprar aproximadamente {self._float(quantidade_sugerida)} "
+                        f"{produto['unidade_medida']} de {produto['produto_nome']} para cobrir "
+                        f"{dias_previsao} dias de venda media; cobertura atual: {cobertura_texto}."
+                    ),
+                }
+            )
+
+        sugestoes.sort(
+            key=lambda item: (
+                self.PRIORIDADE_ORDEM[item["prioridade"]],
+                item["dias_cobertura"] if item["dias_cobertura"] is not None else 999999,
+                -item["quantidade_sugerida"],
+            )
+        )
+        return sugestoes[:limite]
+
+    def _montar_prioridades(
+        self,
+        analises_produtos,
+        risco_validade,
+        produtos_parados,
+        analise_margem,
+        analise_perdas,
+        perdas_relevantes,
+    ):
+        prioridades = []
+        analises_por_id = {produto["produto_id"]: produto for produto in analises_produtos}
+
+        for item in risco_validade["vencidos"]:
+            prioridades.append(
+                self._prioridade(
+                    "validade_vencida",
+                    "critica",
+                    100,
+                    item["produto_id"],
+                    item["produto_nome"],
+                    f"{item['produto_nome']} possui estoque vencido disponivel.",
+                    f"Ha {item['quantidade_em_risco']} {item['unidade_medida']} vencidos desde {item['data_validade']}.",
+                    "Registrar perda ou retirar do estoque imediatamente",
+                    f"R$ {item['valor_em_risco']:.2f} em custo vencido.",
+                    {"quantidade_em_risco": item["quantidade_em_risco"], "valor_em_risco": item["valor_em_risco"]},
+                    item["valor_em_risco"],
+                    data_validade=item["data_validade"],
+                )
+            )
+
+        for produto in analises_produtos:
+            dias_cobertura = produto["dias_cobertura"]
+            if dias_cobertura is not None and dias_cobertura <= Decimal("1"):
+                prioridades.append(
+                    self._prioridade(
+                        "ruptura_prevista",
+                        "critica",
+                        95,
+                        produto["produto_id"],
+                        produto["produto_nome"],
+                        f"{produto['produto_nome']} pode acabar em ate 1 dia.",
+                        "A media diaria de venda supera a cobertura do estoque vendavel.",
+                        "Repor estoque com urgencia",
+                        "Risco de perder vendas por falta de produto.",
+                        self._metricas_produto(produto),
+                        produto["valor_estoque_custo"],
+                        dias_cobertura=dias_cobertura,
+                    )
+                )
+
+            if produto["estoque_baixo"]:
+                pontuacao = 90 if produto["media_venda_diaria"] > Decimal("0") else 80
+                prioridade = "alta" if produto["media_venda_diaria"] > Decimal("0") else "media"
+                prioridades.append(
+                    self._prioridade(
+                        "estoque_baixo",
+                        prioridade,
+                        pontuacao,
+                        produto["produto_id"],
+                        produto["produto_nome"],
+                        f"{produto['produto_nome']} esta abaixo do estoque minimo.",
+                        f"Estoque vendavel de {self._float(produto['estoque_disponivel_venda'])} "
+                        f"{produto['unidade_medida']} contra minimo de {self._float(produto['estoque_minimo'])}.",
+                        "Planejar reposicao",
+                        "Pode afetar o atendimento se o giro continuar.",
+                        self._metricas_produto(produto),
+                        produto["valor_estoque_custo"],
+                        dias_cobertura=dias_cobertura,
+                    )
+                )
+
+        for item in risco_validade["proximos_vencimento"]:
+            prioridade = "alta" if item["dias_para_vencer"] <= 1 else "media"
+            pontuacao = 85 if item["dias_para_vencer"] <= 1 else 75
+            prioridades.append(
+                self._prioridade(
+                    "validade_proxima",
+                    prioridade,
+                    pontuacao,
+                    item["produto_id"],
+                    item["produto_nome"],
+                    f"{item['produto_nome']} esta proximo do vencimento.",
+                    f"Validade em {item['dias_para_vencer']} dia(s), com {item['quantidade_em_risco']} "
+                    f"{item['unidade_medida']} em risco.",
+                    item["acao_sugerida"],
+                    f"R$ {item['valor_em_risco']:.2f} em custo sob risco.",
+                    {"quantidade_em_risco": item["quantidade_em_risco"], "valor_em_risco": item["valor_em_risco"]},
+                    item["valor_em_risco"],
+                    data_validade=item["data_validade"],
+                )
+            )
+
+        if perdas_relevantes:
+            for item in analise_perdas:
+                prioridades.append(
+                    self._prioridade(
+                        "perda_alta",
+                        "alta",
+                        70,
+                        item["produto_id"],
+                        item["produto_nome"],
+                        f"{item['produto_nome']} concentrou perdas no periodo.",
+                        f"Foram {item['total_registros']} registro(s), principalmente por {item['principal_tipo']}.",
+                        item["acao_sugerida"],
+                        f"R$ {item['custo_total']:.2f} em perdas.",
+                        {"custo_total": item["custo_total"], "total_registros": item["total_registros"]},
+                        item["custo_total"],
+                    )
+                )
+
+        for item in analise_margem:
+            if item["classificacao"] not in ("critica", "baixa"):
+                continue
+            prioridades.append(
+                self._prioridade(
+                    "margem_baixa",
+                    "alta" if item["classificacao"] == "critica" else "media",
+                    60,
+                    item["produto_id"],
+                    item["produto_nome"],
+                    f"{item['produto_nome']} vendeu com margem {item['classificacao']}.",
+                    f"Margem de {item['margem_percentual']:.2f}% no periodo.",
+                    item["acao_sugerida"],
+                    f"Receita de R$ {item['receita_total']:.2f} gerou lucro de R$ {item['lucro_bruto_total']:.2f}.",
+                    item,
+                    item["receita_total"],
+                )
+            )
+
+        for item in produtos_parados:
+            produto = analises_por_id.get(item["produto_id"])
+            prioridades.append(
+                self._prioridade(
+                    "produto_parado",
+                    "baixa",
+                    45,
+                    item["produto_id"],
+                    item["produto_nome"],
+                    f"{item['produto_nome']} esta parado com estoque disponivel.",
+                    "Produto ativo com estoque e sem venda recente ou giro muito baixo.",
+                    item["acao_sugerida"],
+                    f"R$ {item['valor_parado_custo']:.2f} parados em estoque.",
+                    item,
+                    item["valor_parado_custo"],
+                    dias_cobertura=produto["dias_cobertura"] if produto else None,
+                )
+            )
+
+        prioridades.sort(
+            key=lambda item: (
+                self.PRIORIDADE_ORDEM[item["prioridade"]],
+                -item["pontuacao"],
+                -item["_impacto_ordenacao"],
+                item["_dias_cobertura_ordenacao"],
+                item["_data_validade_ordenacao"],
+            )
+        )
+        return prioridades
+
+    def _calcular_saude_operacional(
+        self,
+        prioridades,
+        risco_validade,
+        analises_produtos,
+        produtos_parados,
+        perdas_total_custo,
+        lucro_bruto_total,
+        margem_geral,
+    ):
+        vencidos = len(risco_validade["vencidos"])
+        proximos = len(risco_validade["proximos_vencimento"])
+        estoque_baixo = sum(1 for produto in analises_produtos if produto["estoque_baixo"])
+        rupturas = sum(1 for produto in analises_produtos if produto["dias_cobertura"] is not None and produto["dias_cobertura"] <= Decimal("1"))
+        parados_relevantes = sum(1 for produto in produtos_parados if produto["valor_parado_custo"] >= 50)
+        perdas_relevantes = perdas_total_custo > Decimal("0") and (
+            lucro_bruto_total <= Decimal("0")
+            or perdas_total_custo / lucro_bruto_total >= Decimal("0.15")
+        )
+        houve_vendas = any(produto["quantidade_vendida_periodo"] > Decimal("0") for produto in analises_produtos)
+        margem_baixa = houve_vendas and margem_geral < self.MARGEM_BAIXA_PERCENTUAL
+
+        score = Decimal("100")
+        score -= min(Decimal(vencidos * 15), Decimal("40"))
+        score -= min(Decimal(proximos * 6), Decimal("24"))
+        score -= min(Decimal(estoque_baixo * 8), Decimal("32"))
+        score -= min(Decimal(rupturas * 12), Decimal("36"))
+        score -= min(Decimal(parados_relevantes * 5), Decimal("20"))
+        if perdas_relevantes:
+            score -= Decimal("10")
+        if margem_baixa:
+            score -= Decimal("10")
+        score = max(Decimal("0"), min(score, Decimal("100")))
+
+        if score >= Decimal("80"):
+            classificacao = "saudavel"
+            mensagem = "Operacao saudavel, sem riscos criticos no momento."
+        elif score >= Decimal("55"):
+            classificacao = "atencao"
+            mensagem = "Operacao requer atencao por risco de validade e reposicao."
+        else:
+            classificacao = "critica"
+            mensagem = "Operacao critica: existem produtos vencidos, ruptura prevista ou perdas relevantes."
+
+        return {
+            "score": self._float(score, 0),
+            "classificacao": classificacao,
+            "mensagem": mensagem,
+            "fatores": {
+                "vencidos": vencidos,
+                "proximos_vencimento": proximos,
+                "estoque_baixo": estoque_baixo,
+                "rupturas_previstas": rupturas,
+                "produtos_parados_relevantes": parados_relevantes,
+                "perdas_relevantes": perdas_relevantes,
+                "margem_geral_baixa": margem_baixa,
+            },
+        }
+
+    def _montar_resumo_executivo(
+        self,
+        prioridades,
+        sugestoes_reposicao,
+        risco_validade,
+        analise_margem,
+        analise_perdas,
+        saude_operacional,
+    ):
+        resumo = []
+        criticos = [item for item in prioridades if item["prioridade"] == "critica"]
+        if criticos:
+            resumo.append(
+                {
+                    "tipo": "risco",
+                    "prioridade": "critica",
+                    "mensagem": f"Existem {len(criticos)} alertas criticos hoje; trate vencidos e rupturas primeiro.",
+                }
+            )
+        if sugestoes_reposicao:
+            produto = sugestoes_reposicao[0]
+            resumo.append(
+                {
+                    "tipo": "estoque",
+                    "prioridade": produto["prioridade"],
+                    "mensagem": (
+                        f"{produto['produto_nome']} deve ser priorizado na compra: "
+                        f"estoque cobre {produto['dias_cobertura']} dia(s) de venda media."
+                    ),
+                }
+            )
+        if risco_validade["valor_em_risco"] > 0:
+            resumo.append(
+                {
+                    "tipo": "validade",
+                    "prioridade": "alta" if risco_validade["vencidos"] else "media",
+                    "mensagem": f"Ha R$ {risco_validade['valor_em_risco']:.2f} em estoque vencido ou proximo do vencimento.",
+                }
+            )
+        margens_baixas = [item for item in analise_margem if item["classificacao"] in ("critica", "baixa")]
+        if margens_baixas:
+            resumo.append(
+                {
+                    "tipo": "financeiro",
+                    "prioridade": "media",
+                    "mensagem": f"{len(margens_baixas)} produto(s) vendidos tem margem abaixo de 20%.",
+                }
+            )
+        if analise_perdas:
+            produto = analise_perdas[0]
+            resumo.append(
+                {
+                    "tipo": "risco",
+                    "prioridade": "alta",
+                    "mensagem": f"{produto['produto_nome']} lidera perdas no periodo com R$ {produto['custo_total']:.2f}.",
+                }
+            )
+        if not resumo:
+            resumo.append(
+                {
+                    "tipo": "oportunidade",
+                    "prioridade": "baixa",
+                    "mensagem": saude_operacional["mensagem"],
+                }
+            )
+
+        return resumo
+
+    def _serie_vendas_por_dia(self, data_inicial, data_final):
+        rows = self.session.execute(
+            select(
+                Movimentacao.data,
+                func.coalesce(func.sum(Movimentacao.quantidade), 0),
+                func.coalesce(func.sum(Movimentacao.receita_total), 0),
+            )
+            .where(
+                Movimentacao.tipo == TipoMovimentacao.SAIDA,
+                Movimentacao.subtipo == SubtipoMovimentacao.VENDA,
+                Movimentacao.data >= data_inicial,
+                Movimentacao.data <= data_final,
+            )
+            .group_by(Movimentacao.data)
+            .order_by(Movimentacao.data.asc())
+        ).all()
+        por_data = {
+            data_movimentacao: {
+                "quantidade_vendida": self._float(quantidade),
+                "receita_total": self._float(receita, 2),
+            }
+            for data_movimentacao, quantidade, receita in rows
+        }
+        serie = []
+        dia = data_inicial
+        while dia <= data_final:
+            valores = por_data.get(dia, {"quantidade_vendida": 0, "receita_total": 0})
+            serie.append({"data": dia.isoformat(), **valores})
+            dia += timedelta(days=1)
+        return serie
+
+    def _alertas_por_tipo(self, prioridades):
+        contador = Counter(prioridade["tipo"] for prioridade in prioridades)
+        return [{"tipo": tipo, "total": total} for tipo, total in sorted(contador.items())]
+
+    def _prioridade(
+        self,
+        tipo,
+        prioridade,
+        pontuacao,
+        produto_id,
+        produto_nome,
+        mensagem,
+        causa,
+        acao_sugerida,
+        impacto_estimado,
+        metricas,
+        impacto_ordenacao,
+        dias_cobertura=None,
+        data_validade=None,
+    ):
+        return {
+            "tipo": tipo,
+            "prioridade": prioridade,
+            "pontuacao": pontuacao,
+            "produto_id": produto_id,
+            "produto_nome": produto_nome,
+            "mensagem": mensagem,
+            "causa": causa,
+            "acao_sugerida": acao_sugerida,
+            "impacto_estimado": impacto_estimado,
+            "metricas": metricas,
+            "_impacto_ordenacao": float(impacto_ordenacao or 0),
+            "_dias_cobertura_ordenacao": float(dias_cobertura) if dias_cobertura is not None else 999999,
+            "_data_validade_ordenacao": data_validade or "9999-12-31",
+        }
+
+    def _limitar_prioridades(self, prioridades, limite):
+        itens = []
+        for prioridade in prioridades[:limite]:
+            item = dict(prioridade)
+            item.pop("_impacto_ordenacao", None)
+            item.pop("_dias_cobertura_ordenacao", None)
+            item.pop("_data_validade_ordenacao", None)
+            itens.append(item)
+        return itens
+
+    def _metricas_produto(self, produto):
+        return {
+            "produto_id": produto["produto_id"],
+            "produto_nome": produto["produto_nome"],
+            "categoria": produto["categoria"],
+            "unidade_medida": produto["unidade_medida"],
+            "estoque_atual": self._float(produto["estoque_atual"]),
+            "estoque_minimo": self._float(produto["estoque_minimo"]),
+            "estoque_disponivel_venda": self._float(produto["estoque_disponivel_venda"]),
+            "venda_total_periodo": self._float(produto["quantidade_vendida_periodo"]),
+            "media_venda_diaria": self._float(produto["media_venda_diaria"]),
+            "dias_cobertura": self._float(produto["dias_cobertura"], 1) if produto["dias_cobertura"] is not None else None,
+            "valor_estoque_custo": self._float(produto["valor_estoque_custo"], 2),
+        }
+
+    def _acao_validade(self, dias_para_vencer):
+        if dias_para_vencer < 0:
+            return "Registrar perda ou retirar do estoque imediatamente"
+        if dias_para_vencer == 0:
+            return "Priorizar venda hoje ou avaliar perda"
+        if dias_para_vencer <= 3:
+            return "Criar promocao ou priorizar exposicao"
+        return "Acompanhar validade"
+
+    def _classificar_perda(self, observacao):
+        texto = (observacao or "").lower()
+        if "venc" in texto or "validade" in texto:
+            return "vencimento"
+        if "avaria" in texto or "dano" in texto or "amass" in texto or "manuseio" in texto:
+            return "avaria"
+        return "outros"
+
+    def _arredondar_quantidade(self, quantidade, unidade_medida):
+        if quantidade <= Decimal("0"):
+            return Decimal("0")
+        if unidade_medida in ("un", "cx"):
+            return quantidade.to_integral_value(rounding=ROUND_CEILING)
+        return quantidade.quantize(Decimal("0.001"))
+
+    def _percentual(self, valor, total):
+        valor = self._decimal(valor)
+        total = self._decimal(total)
+        if total <= Decimal("0"):
+            return Decimal("0")
+        return valor / total * Decimal("100")
+
+    def _decimal(self, valor):
+        if valor is None:
+            return Decimal("0")
+        return Decimal(str(valor))
+
+    def _float(self, valor, casas=3):
+        return round(float(valor or 0), casas)
+
+    def _formatar_dias(self, dias):
+        if dias is None:
+            return "sem historico"
+        if dias <= Decimal("1"):
+            return "ate 1 dia"
+        return f"{self._float(dias, 1)} dias"

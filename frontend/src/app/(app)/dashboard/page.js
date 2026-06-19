@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "primereact/button";
+import { InputNumber } from "primereact/inputnumber";
+import { InputText } from "primereact/inputtext";
 import { Message } from "primereact/message";
 
 import EstadoVazio from "@/components/EstadoVazio";
@@ -12,130 +14,164 @@ import { formatarData, formatarMoeda, formatarQuantidade, formatarQuantidadeComU
 
 import styles from "./page.module.css";
 
-const ITENS_POR_PAGINA_ALERTAS = 8;
-const ITENS_POR_PAGINA_VALIDADE = 5;
-const LIMITE_LISTA_RESUMIDA = 5;
+const ITENS_POR_PAGINA_PRIORIDADES = 8;
+const LIMITE_LISTA = 6;
+
+function formatarDataIso(data) {
+  const ano = data.getFullYear();
+  const mes = String(data.getMonth() + 1).padStart(2, "0");
+  const dia = String(data.getDate()).padStart(2, "0");
+  return `${ano}-${mes}-${dia}`;
+}
+
+function obterPeriodoInicial() {
+  const hoje = new Date();
+  const inicio = new Date(hoje);
+  inicio.setDate(hoje.getDate() - 29);
+
+  return {
+    data_inicial: formatarDataIso(inicio),
+    data_final: formatarDataIso(hoje),
+    dias_previsao: 7,
+    dias_validade: 3,
+    limite: 10
+  };
+}
+
+function obterPeriodoRapido(tipo) {
+  const hoje = new Date();
+  const inicio = new Date(hoje);
+
+  if (tipo === "7d") {
+    inicio.setDate(hoje.getDate() - 6);
+  } else if (tipo === "mes") {
+    inicio.setDate(1);
+  } else {
+    inicio.setDate(hoje.getDate() - 29);
+  }
+
+  return {
+    data_inicial: formatarDataIso(inicio),
+    data_final: formatarDataIso(hoje)
+  };
+}
 
 function formatarPercentual(valor) {
   return `${formatarQuantidade(valor)}%`;
 }
 
-function formatarGiroMedio(valor, unidadeMedida) {
-  const quantidade = Number(valor ?? 0).toLocaleString("pt-BR", {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1
-  });
+function formatarCobertura(valor) {
+  if (valor === null || valor === undefined) {
+    return "Sem historico";
+  }
 
-  return unidadeMedida ? `${quantidade} ${unidadeMedida}` : quantidade;
+  return `${Number(valor).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} dia(s)`;
 }
 
 function obterRotuloPrioridade(prioridade) {
   return {
+    critica: "Critica",
     alta: "Alta",
-    media: "Média",
+    media: "Media",
     baixa: "Baixa"
   }[prioridade] ?? "Baixa";
 }
 
 function obterClassePrioridade(prioridade) {
   return {
+    critica: styles.prioridadeCritica,
     alta: styles.prioridadeAlta,
     media: styles.prioridadeMedia,
     baixa: styles.prioridadeBaixa
   }[prioridade] ?? styles.prioridadeBaixa;
 }
 
-function obterDestinoAcao(alerta) {
-  if (alerta?.acao_sugerida === "Repor estoque" || alerta?.tipo === "estoque_baixo") {
+function obterDestinoAcao(item) {
+  if (["estoque_baixo", "ruptura_prevista"].includes(item?.tipo)) {
     return "/estoque";
   }
 
-  if (alerta?.tipo === "produto_vencido" || alerta?.tipo === "proximo_vencimento") {
+  if (["validade_vencida", "validade_proxima", "perda_alta"].includes(item?.tipo)) {
     return "/relatorios";
   }
 
-  return alerta?.produto_id ? `/produtos/${alerta.produto_id}` : "/relatorios";
+  return item?.produto_id ? `/produtos/${item.produto_id}` : "/relatorios";
 }
 
 function SecaoVazia({ icone, titulo, descricao }) {
-  return (
-    <EstadoVazio
-      icone={icone}
-      titulo={titulo}
-      descricao={descricao}
-    />
-  );
+  return <EstadoVazio icone={icone} titulo={titulo} descricao={descricao} />;
 }
 
 export default function PaginaPainel() {
   const [dashboard, setDashboard] = useState(null);
+  const [filtros, setFiltros] = useState(obterPeriodoInicial);
   const [carregando, setCarregando] = useState(true);
   const [mensagem, setMensagem] = useState(null);
-  const [paginaAlertas, setPaginaAlertas] = useState(0);
-  const [paginaValidade, setPaginaValidade] = useState(0);
+  const [paginaPrioridades, setPaginaPrioridades] = useState(0);
 
-  const carregarPainel = useCallback(async () => {
+  const carregarPainel = useCallback(async (proximosFiltros = filtros) => {
     setCarregando(true);
     setMensagem(null);
-    setPaginaAlertas(0);
-    setPaginaValidade(0);
+    setPaginaPrioridades(0);
 
     try {
-      const dados = await buscarDashboardInteligente();
+      const dados = await buscarDashboardInteligente(proximosFiltros);
       setDashboard(dados);
     } catch (erro) {
       setMensagem({ severity: "error", text: erro.message });
     } finally {
       setCarregando(false);
     }
-  }, []);
+  }, [filtros]);
 
   useEffect(() => {
-    carregarPainel();
-  }, [carregarPainel]);
+    carregarPainel(filtros);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function atualizarFiltro(campo, valor) {
+    setFiltros((filtrosAtuais) => ({
+      ...filtrosAtuais,
+      [campo]: valor
+    }));
+  }
+
+  async function aplicarPeriodoRapido(tipo) {
+    const proximosFiltros = { ...filtros, ...obterPeriodoRapido(tipo) };
+    setFiltros(proximosFiltros);
+    await carregarPainel(proximosFiltros);
+  }
 
   const kpis = dashboard?.kpis ?? {};
+  const saude = dashboard?.saude_operacional ?? {};
   const resumoExecutivo = dashboard?.resumo_executivo ?? [];
-  const alertas = dashboard?.alertas ?? [];
+  const prioridades = dashboard?.prioridades_hoje ?? [];
   const sugestoesReposicao = dashboard?.sugestoes_reposicao ?? [];
+  const riscoValidade = dashboard?.risco_validade ?? {};
   const produtosParados = dashboard?.produtos_parados ?? [];
+  const analiseMargem = dashboard?.analise_margem ?? [];
+  const analisePerdas = dashboard?.analise_perdas ?? [];
   const maisVendidos = dashboard?.mais_vendidos ?? [];
-  const validade = dashboard?.validade ?? {};
-  const vencidos = validade.vencidos ?? [];
-  const proximosVencimento = validade.proximos_vencimento ?? [];
-  const totalPaginasAlertas = Math.max(Math.ceil(alertas.length / ITENS_POR_PAGINA_ALERTAS), 1);
-  const indiceInicialAlertas = paginaAlertas * ITENS_POR_PAGINA_ALERTAS;
-  const alertasVisiveis = alertas.slice(indiceInicialAlertas, indiceInicialAlertas + ITENS_POR_PAGINA_ALERTAS);
-  const riscosValidade = [
-    ...vencidos.map((produto) => ({
-      ...produto,
-      chave: `vencido-${produto.produto_id}`,
-      rotulo: "Vencido",
-      classePrioridade: styles.prioridadeAlta,
-      detalhe: formatarQuantidadeComUnidade(produto.quantidade_total, produto.unidade_medida)
-    })),
-    ...proximosVencimento.map((produto) => ({
-      ...produto,
-      chave: `proximo-${produto.produto_id}`,
-      rotulo: "Próximo",
-      classePrioridade: styles.prioridadeMedia,
-      detalhe: `Validade: ${formatarData(produto.proxima_validade)}`
-    }))
-  ];
-  const totalPaginasValidade = Math.max(Math.ceil(riscosValidade.length / ITENS_POR_PAGINA_VALIDADE), 1);
-  const indiceInicialValidade = paginaValidade * ITENS_POR_PAGINA_VALIDADE;
-  const riscosValidadeVisiveis = riscosValidade.slice(
-    indiceInicialValidade,
-    indiceInicialValidade + ITENS_POR_PAGINA_VALIDADE
+  const series = dashboard?.series_graficos ?? {};
+  const vendasPorDia = series.vendas_por_dia ?? [];
+  const alertasPorTipo = series.alertas_por_tipo ?? [];
+  const perdasPorTipo = series.perdas_por_tipo ?? [];
+  const totalPaginasPrioridades = Math.max(Math.ceil(prioridades.length / ITENS_POR_PAGINA_PRIORIDADES), 1);
+  const indiceInicialPrioridades = paginaPrioridades * ITENS_POR_PAGINA_PRIORIDADES;
+  const prioridadesVisiveis = prioridades.slice(
+    indiceInicialPrioridades,
+    indiceInicialPrioridades + ITENS_POR_PAGINA_PRIORIDADES
   );
-  const produtosParadosVisiveis = produtosParados.slice(0, LIMITE_LISTA_RESUMIDA);
+  const maiorReceitaSerie = useMemo(
+    () => Math.max(...vendasPorDia.map((item) => Number(item.receita_total ?? 0)), 1),
+    [vendasPorDia]
+  );
 
   const indicadores = useMemo(
     () => [
       {
         rotulo: "Receita",
         valor: formatarMoeda(kpis.receita_total),
-        detalhe: "Período analisado",
+        detalhe: "Periodo analisado",
         icone: "pi pi-wallet",
         tom: "primary"
       },
@@ -154,25 +190,25 @@ export default function PaginaPainel() {
         tom: "neutral"
       },
       {
-        rotulo: "Valor em estoque",
+        rotulo: "Estoque",
         valor: formatarMoeda(kpis.valor_estoque_custo),
-        detalhe: "Estoque a custo",
+        detalhe: "Valor a custo",
         icone: "pi pi-box",
         tom: "neutral"
       },
       {
         rotulo: "Perdas",
         valor: formatarMoeda(kpis.perdas_total_custo),
-        detalhe: `${kpis.produtos_vencidos ?? 0} produtos vencidos`,
+        detalhe: "Custo no periodo",
         icone: "pi pi-arrow-down-right",
         tom: "danger"
       },
       {
-        rotulo: "Alertas",
-        valor: kpis.total_alertas ?? 0,
-        detalhe: "Prioridades calculadas",
+        rotulo: "Alertas criticos",
+        valor: kpis.alertas_criticos ?? 0,
+        detalhe: `${kpis.alertas_total ?? 0} alertas totais`,
         icone: "pi pi-exclamation-triangle",
-        tom: (kpis.total_alertas ?? 0) > 0 ? "warning" : "healthy"
+        tom: (kpis.alertas_criticos ?? 0) > 0 ? "warning" : "healthy"
       }
     ],
     [kpis]
@@ -182,9 +218,9 @@ export default function PaginaPainel() {
     <section className={styles.page}>
       <header className={styles.header}>
         <div>
-          <span className={styles.eyebrow}>Regras + insights</span>
-          <h1>Dashboard Orientado à Decisão</h1>
-          <p>Prioridades, riscos e recomendações automáticas da operação.</p>
+          <span className={styles.eyebrow}>Regras + decisao</span>
+          <h1>Dashboard Orientado a Decisao</h1>
+          <p>Prioridades, riscos e recomendacoes automaticas da operacao.</p>
         </div>
 
         <div className={styles.headerActions}>
@@ -193,7 +229,7 @@ export default function PaginaPainel() {
             icon="pi pi-refresh"
             outlined
             loading={carregando}
-            onClick={carregarPainel}
+            onClick={() => carregarPainel(filtros)}
           />
           <Link className={styles.primaryAction} href="/pdv">
             <i className="pi pi-shopping-cart" aria-hidden="true" />
@@ -202,12 +238,83 @@ export default function PaginaPainel() {
         </div>
       </header>
 
+      <section className={styles.filterPanel} aria-label="Filtros do dashboard">
+        <div className={styles.quickPeriods}>
+          <span>Periodo rapido</span>
+          <Button label="7 dias" text size="small" onClick={() => aplicarPeriodoRapido("7d")} />
+          <Button label="30 dias" text size="small" onClick={() => aplicarPeriodoRapido("30d")} />
+          <Button label="Este mes" text size="small" onClick={() => aplicarPeriodoRapido("mes")} />
+        </div>
+        <div className={styles.filterGrid}>
+          <label>
+            Data inicial
+            <InputText
+              type="date"
+              value={filtros.data_inicial}
+              onChange={(evento) => atualizarFiltro("data_inicial", evento.target.value)}
+              disabled={carregando}
+            />
+          </label>
+          <label>
+            Data final
+            <InputText
+              type="date"
+              value={filtros.data_final}
+              onChange={(evento) => atualizarFiltro("data_final", evento.target.value)}
+              disabled={carregando}
+            />
+          </label>
+          <label>
+            Dias previsao
+            <InputNumber
+              min={1}
+              useGrouping={false}
+              value={filtros.dias_previsao}
+              onValueChange={(evento) => atualizarFiltro("dias_previsao", evento.value ?? 7)}
+              disabled={carregando}
+            />
+          </label>
+          <label>
+            Dias validade
+            <InputNumber
+              min={1}
+              useGrouping={false}
+              value={filtros.dias_validade}
+              onValueChange={(evento) => atualizarFiltro("dias_validade", evento.value ?? 3)}
+              disabled={carregando}
+            />
+          </label>
+          <Button label="Aplicar" icon="pi pi-filter" onClick={() => carregarPainel(filtros)} loading={carregando} />
+        </div>
+      </section>
+
       {mensagem ? (
         <div className={styles.feedback}>
           <Message severity={mensagem.severity} text={mensagem.text} />
-          <Button label="Tentar novamente" icon="pi pi-refresh" text onClick={carregarPainel} />
+          <Button label="Tentar novamente" icon="pi pi-refresh" text onClick={() => carregarPainel(filtros)} />
         </div>
       ) : null}
+
+      <section className={`${styles.healthPanel} ${styles[`health_${saude.classificacao ?? "saudavel"}`]}`}>
+        {carregando ? (
+          <div className={styles.rowSkeleton} />
+        ) : (
+          <>
+            <div className={styles.healthScore}>
+              <span>Saude operacional</span>
+              <strong>{saude.score ?? 0}</strong>
+              <small>{saude.classificacao ?? "saudavel"}</small>
+            </div>
+            <div className={styles.healthCopy}>
+              <h2>{saude.mensagem}</h2>
+              <p>
+                {kpis.alertas_criticos ?? 0} alerta(s) critico(s), {kpis.produtos_vencidos ?? 0} produto(s)
+                vencido(s), {kpis.produtos_estoque_baixo ?? 0} produto(s) com estoque baixo.
+              </p>
+            </div>
+          </>
+        )}
+      </section>
 
       <section className={styles.metrics} aria-label="Indicadores principais" aria-live="polite">
         {carregando
@@ -228,8 +335,8 @@ export default function PaginaPainel() {
         <div className={styles.panelHeader}>
           <div>
             <span className={styles.eyebrow}>Resumo executivo</span>
-            <h2>O que fazer agora</h2>
-            <p>Frases automáticas geradas a partir das regras de estoque, giro e validade.</p>
+            <h2>O que o gerente precisa fazer hoje</h2>
+            <p>Frases geradas pelo backend a partir de estoque, giro, margem, perdas e validade.</p>
           </div>
         </div>
 
@@ -237,12 +344,16 @@ export default function PaginaPainel() {
           <div className={styles.summarySkeletons}>
             {Array.from({ length: 3 }, (_, indice) => <div className={styles.rowSkeleton} key={indice} />)}
           </div>
+        ) : resumoExecutivo.length === 0 ? (
+          <SecaoVazia icone="pi pi-check" titulo="Sem recomendacoes no periodo." descricao="Nao ha alertas relevantes para resumir agora." />
         ) : (
           <ul className={styles.summaryList}>
-            {resumoExecutivo.map((frase) => (
-              <li key={frase}>
-                <i className="pi pi-check-circle" aria-hidden="true" />
-                <span>{frase}</span>
+            {resumoExecutivo.map((item, indice) => (
+              <li key={`${item.tipo}-${indice}`}>
+                <span className={`${styles.priorityTag} ${obterClassePrioridade(item.prioridade)}`}>
+                  {obterRotuloPrioridade(item.prioridade)}
+                </span>
+                <strong>{item.mensagem}</strong>
               </li>
             ))}
           </ul>
@@ -254,12 +365,12 @@ export default function PaginaPainel() {
           <div className={styles.panelHeader}>
             <div>
               <span className={styles.eyebrow}>Prioridades de hoje</span>
-              <h2>Alertas priorizados</h2>
-              <p>Itens ordenados por impacto operacional.</p>
+              <h2>Problemas ordenados por risco</h2>
+              <p>Cada alerta vem com causa, acao sugerida e impacto estimado.</p>
             </div>
             {!carregando ? (
-              <span className={`${styles.alertCounter} ${alertas.length === 0 ? styles.alertCounterHealthy : ""}`}>
-                {alertas.length}
+              <span className={`${styles.alertCounter} ${prioridades.length === 0 ? styles.alertCounterHealthy : ""}`}>
+                {prioridades.length}
               </span>
             ) : null}
           </div>
@@ -268,57 +379,59 @@ export default function PaginaPainel() {
             <div className={styles.alertSkeletons}>
               {Array.from({ length: 4 }, (_, indice) => <div className={styles.rowSkeleton} key={indice} />)}
             </div>
-          ) : alertas.length === 0 ? (
+          ) : prioridades.length === 0 ? (
             <SecaoVazia
               icone="pi pi-check"
               titulo="Nenhuma prioridade para resolver agora."
-              descricao="O painel não encontrou alertas críticos no período analisado."
+              descricao="O backend nao encontrou alertas no periodo analisado."
             />
           ) : (
             <>
               <div className={styles.decisionList}>
-                {alertasVisiveis.map((alerta, indice) => (
-                  <article className={styles.decisionItem} key={`${alerta.tipo}-${alerta.produto_id}-${indice}`}>
-                    <ProdutoVisual nome={alerta.produto_nome} categoria={alerta.categoria} />
+                {prioridadesVisiveis.map((item, indice) => (
+                  <article className={styles.decisionItem} key={`${item.tipo}-${item.produto_id}-${indice}`}>
+                    <ProdutoVisual nome={item.produto_nome} categoria={item.metricas?.categoria} />
                     <div className={styles.decisionContent}>
                       <div>
-                        <strong>{alerta.produto_nome}</strong>
-                        <span className={`${styles.priorityTag} ${obterClassePrioridade(alerta.prioridade)}`}>
-                          {obterRotuloPrioridade(alerta.prioridade)}
+                        <strong>{item.produto_nome}</strong>
+                        <span className={`${styles.priorityTag} ${obterClassePrioridade(item.prioridade)}`}>
+                          {obterRotuloPrioridade(item.prioridade)} | {item.pontuacao}
                         </span>
                       </div>
-                      <p>{alerta.mensagem}</p>
-                      <small>{alerta.acao_sugerida}</small>
+                      <p>{item.mensagem}</p>
+                      <small><b>Causa:</b> {item.causa}</small>
+                      <small><b>Acao:</b> {item.acao_sugerida}</small>
+                      <small><b>Impacto:</b> {item.impacto_estimado}</small>
                     </div>
-                    <Link className={styles.rowAction} href={obterDestinoAcao(alerta)} aria-label={`Abrir ${alerta.produto_nome}`}>
+                    <Link className={styles.rowAction} href={obterDestinoAcao(item)} aria-label={`Abrir ${item.produto_nome}`}>
                       <i className="pi pi-arrow-right" aria-hidden="true" />
                     </Link>
                   </article>
                 ))}
               </div>
 
-              {alertas.length > ITENS_POR_PAGINA_ALERTAS ? (
+              {prioridades.length > ITENS_POR_PAGINA_PRIORIDADES ? (
                 <div className={styles.listFooter}>
                   <span>
-                    Mostrando {indiceInicialAlertas + 1}-{indiceInicialAlertas + alertasVisiveis.length} de {alertas.length}
+                    Mostrando {indiceInicialPrioridades + 1}-{indiceInicialPrioridades + prioridadesVisiveis.length} de {prioridades.length}
                   </span>
-                  <div className={styles.carouselControls} aria-label="Paginação dos alertas">
+                  <div className={styles.carouselControls} aria-label="Paginacao das prioridades">
                     <Button
                       icon="pi pi-angle-left"
                       text
                       rounded
-                      disabled={paginaAlertas === 0}
-                      aria-label="Página anterior de alertas"
-                      onClick={() => setPaginaAlertas((paginaAtual) => Math.max(paginaAtual - 1, 0))}
+                      disabled={paginaPrioridades === 0}
+                      aria-label="Pagina anterior"
+                      onClick={() => setPaginaPrioridades((paginaAtual) => Math.max(paginaAtual - 1, 0))}
                     />
-                    <strong>{paginaAlertas + 1} / {totalPaginasAlertas}</strong>
+                    <strong>{paginaPrioridades + 1} / {totalPaginasPrioridades}</strong>
                     <Button
                       icon="pi pi-angle-right"
                       text
                       rounded
-                      disabled={paginaAlertas >= totalPaginasAlertas - 1}
-                      aria-label="Próxima página de alertas"
-                      onClick={() => setPaginaAlertas((paginaAtual) => Math.min(paginaAtual + 1, totalPaginasAlertas - 1))}
+                      disabled={paginaPrioridades >= totalPaginasPrioridades - 1}
+                      aria-label="Proxima pagina"
+                      onClick={() => setPaginaPrioridades((paginaAtual) => Math.min(paginaAtual + 1, totalPaginasPrioridades - 1))}
                     />
                   </div>
                 </div>
@@ -330,9 +443,9 @@ export default function PaginaPainel() {
         <section className={styles.recommendationPanel}>
           <div className={styles.panelHeader}>
             <div>
-              <span className={styles.eyebrow}>Sugestões de reposição</span>
+              <span className={styles.eyebrow}>Reposicao inteligente</span>
               <h2>Comprar com prioridade</h2>
-              <p>Baseado em giro médio e dias estimados até acabar.</p>
+              <p>Sugestao baseada em media diaria, estoque vendavel e cobertura desejada.</p>
             </div>
           </div>
 
@@ -343,12 +456,12 @@ export default function PaginaPainel() {
           ) : sugestoesReposicao.length === 0 ? (
             <SecaoVazia
               icone="pi pi-shopping-bag"
-              titulo="Nenhuma reposição sugerida."
-              descricao="O estoque atual cobre a previsão de venda dos próximos dias."
+              titulo="Nenhuma reposicao sugerida."
+              descricao="Nao ha produto com giro suficiente e baixa cobertura no periodo."
             />
           ) : (
             <div className={styles.repositionList}>
-              {sugestoesReposicao.slice(0, 5).map((produto) => (
+              {sugestoesReposicao.slice(0, LIMITE_LISTA).map((produto) => (
                 <article className={styles.repositionItem} key={produto.produto_id}>
                   <div>
                     <strong>{produto.produto_nome}</strong>
@@ -356,12 +469,10 @@ export default function PaginaPainel() {
                       {obterRotuloPrioridade(produto.prioridade)}
                     </span>
                   </div>
-                  <p>
-                    Sugerido: {formatarQuantidadeComUnidade(produto.quantidade_sugerida, produto.unidade_medida)}
-                  </p>
-                  <small>
-                    Giro médio: {formatarGiroMedio(produto.media_venda_diaria, produto.unidade_medida)}/dia
-                  </small>
+                  <p>Sugerido: {formatarQuantidadeComUnidade(produto.quantidade_sugerida, produto.unidade_medida)}</p>
+                  <small>Media: {formatarQuantidadeComUnidade(produto.media_venda_diaria, produto.unidade_medida)}/dia</small>
+                  <small>Cobertura: {formatarCobertura(produto.dias_cobertura)}</small>
+                  <small>{produto.justificativa}</small>
                 </article>
               ))}
             </div>
@@ -374,8 +485,8 @@ export default function PaginaPainel() {
           <div className={styles.panelHeader}>
             <div>
               <span className={styles.eyebrow}>Risco de validade</span>
-              <h2>Vencidos e próximos</h2>
-              <p>Produtos que podem virar perda se nada for feito.</p>
+              <h2>Vencidos e proximos</h2>
+              <p>{riscoValidade.acao_geral_sugerida ?? "Sem acao emergencial de validade."}</p>
             </div>
           </div>
 
@@ -383,51 +494,19 @@ export default function PaginaPainel() {
             <div className={styles.alertSkeletons}>
               {Array.from({ length: 3 }, (_, indice) => <div className={styles.rowSkeleton} key={indice} />)}
             </div>
-          ) : vencidos.length === 0 && proximosVencimento.length === 0 ? (
-            <SecaoVazia
-              icone="pi pi-calendar"
-              titulo="Nenhum risco de validade."
-              descricao="Não há produtos vencidos ou próximos do vencimento."
-            />
+          ) : (riscoValidade.vencidos?.length ?? 0) === 0 && (riscoValidade.proximos_vencimento?.length ?? 0) === 0 ? (
+            <SecaoVazia icone="pi pi-calendar" titulo="Nenhum risco de validade." descricao="Nao ha produtos vencidos ou proximos do vencimento." />
           ) : (
-            <>
-              <div className={styles.compactList}>
-                {riscosValidadeVisiveis.map((produto) => (
-                  <article className={styles.compactItem} key={produto.chave}>
-                    <strong>{produto.produto_nome}</strong>
-                    <span className={`${styles.priorityTag} ${produto.classePrioridade}`}>{produto.rotulo}</span>
-                    <small>{produto.detalhe}</small>
-                  </article>
-                ))}
-              </div>
-
-              {riscosValidade.length > ITENS_POR_PAGINA_VALIDADE ? (
-                <div className={styles.listFooter}>
-                  <span>
-                    Mostrando {indiceInicialValidade + 1}-{indiceInicialValidade + riscosValidadeVisiveis.length} de {riscosValidade.length}
-                  </span>
-                  <div className={styles.carouselControls} aria-label="Paginação dos riscos de validade">
-                    <Button
-                      icon="pi pi-angle-left"
-                      text
-                      rounded
-                      disabled={paginaValidade === 0}
-                      aria-label="Página anterior de validade"
-                      onClick={() => setPaginaValidade((paginaAtual) => Math.max(paginaAtual - 1, 0))}
-                    />
-                    <strong>{paginaValidade + 1} / {totalPaginasValidade}</strong>
-                    <Button
-                      icon="pi pi-angle-right"
-                      text
-                      rounded
-                      disabled={paginaValidade >= totalPaginasValidade - 1}
-                      aria-label="Próxima página de validade"
-                      onClick={() => setPaginaValidade((paginaAtual) => Math.min(paginaAtual + 1, totalPaginasValidade - 1))}
-                    />
-                  </div>
-                </div>
-              ) : null}
-            </>
+            <div className={styles.compactList}>
+              {[...(riscoValidade.vencidos ?? []), ...(riscoValidade.proximos_vencimento ?? [])].slice(0, LIMITE_LISTA).map((produto) => (
+                <article className={styles.compactItem} key={`${produto.data_validade}-${produto.produto_id}`}>
+                  <strong>{produto.produto_nome}</strong>
+                  <span>{formatarQuantidadeComUnidade(produto.quantidade_em_risco, produto.unidade_medida)}</span>
+                  <small>{formatarMoeda(produto.valor_em_risco)} em risco | {formatarData(produto.data_validade)}</small>
+                  <small>{produto.acao_sugerida}</small>
+                </article>
+              ))}
+            </div>
           )}
         </section>
 
@@ -436,7 +515,7 @@ export default function PaginaPainel() {
             <div>
               <span className={styles.eyebrow}>Produtos parados</span>
               <h2>Baixo giro</h2>
-              <p>Itens com estoque e sem venda no período.</p>
+              <p>Itens ativos com estoque e pouca ou nenhuma venda recente.</p>
             </div>
           </div>
 
@@ -445,18 +524,15 @@ export default function PaginaPainel() {
               {Array.from({ length: 3 }, (_, indice) => <div className={styles.rowSkeleton} key={indice} />)}
             </div>
           ) : produtosParados.length === 0 ? (
-            <SecaoVazia
-              icone="pi pi-clock"
-              titulo="Nenhum produto parado."
-              descricao="Todos os itens com estoque tiveram giro recente."
-            />
+            <SecaoVazia icone="pi pi-clock" titulo="Nenhum produto parado." descricao="Todos os itens com estoque tiveram giro aceitavel." />
           ) : (
             <div className={styles.compactList}>
-              {produtosParadosVisiveis.map((produto) => (
+              {produtosParados.slice(0, LIMITE_LISTA).map((produto) => (
                 <article className={styles.compactItem} key={produto.produto_id}>
                   <strong>{produto.produto_nome}</strong>
                   <span>{formatarQuantidadeComUnidade(produto.estoque_atual, produto.unidade_medida)}</span>
-                  <small>{formatarMoeda(produto.valor_estoque_custo)} parado</small>
+                  <small>{formatarMoeda(produto.valor_parado_custo)} parado</small>
+                  <small>{produto.acao_sugerida}</small>
                 </article>
               ))}
             </div>
@@ -466,9 +542,9 @@ export default function PaginaPainel() {
         <section className={styles.infoPanel}>
           <div className={styles.panelHeader}>
             <div>
-              <span className={styles.eyebrow}>Mais vendidos</span>
-              <h2>Produtos com maior giro</h2>
-              <p>Top 5 calculado pelas vendas disponíveis.</p>
+              <span className={styles.eyebrow}>Margem e perdas</span>
+              <h2>Financeiro acionavel</h2>
+              <p>Produtos vendidos com margem baixa e itens que concentraram perdas.</p>
             </div>
           </div>
 
@@ -476,21 +552,93 @@ export default function PaginaPainel() {
             <div className={styles.alertSkeletons}>
               {Array.from({ length: 3 }, (_, indice) => <div className={styles.rowSkeleton} key={indice} />)}
             </div>
-          ) : maisVendidos.length === 0 ? (
-            <SecaoVazia
-              icone="pi pi-chart-bar"
-              titulo="Nenhuma venda no período."
-              descricao="Os produtos mais vendidos aparecerão aqui conforme o PDV for usado."
-            />
+          ) : analiseMargem.length === 0 && analisePerdas.length === 0 ? (
+            <SecaoVazia icone="pi pi-chart-line" titulo="Sem analise financeira no periodo." descricao="Nao ha vendas ou perdas suficientes para destacar." />
           ) : (
             <div className={styles.compactList}>
-              {maisVendidos.map((produto, indice) => (
+              {analiseMargem.slice(0, 3).map((produto) => (
+                <article className={styles.compactItem} key={`margem-${produto.produto_id}`}>
+                  <strong>{produto.produto_nome}</strong>
+                  <span>Margem {formatarPercentual(produto.margem_percentual)} | {produto.classificacao}</span>
+                  <small>{produto.acao_sugerida}</small>
+                </article>
+              ))}
+              {analisePerdas.slice(0, 3).map((produto) => (
+                <article className={styles.compactItem} key={`perda-${produto.produto_id}`}>
+                  <strong>{produto.produto_nome}</strong>
+                  <span>{formatarMoeda(produto.custo_total)} em perdas</span>
+                  <small>{produto.principal_tipo} | {produto.acao_sugerida}</small>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+
+      <div className={styles.secondaryGrid}>
+        <section className={styles.infoPanel}>
+          <div className={styles.panelHeader}>
+            <div>
+              <span className={styles.eyebrow}>Mais vendidos</span>
+              <h2>Produtos com maior giro</h2>
+              <p>Ranking do periodo analisado.</p>
+            </div>
+          </div>
+          {carregando ? (
+            <div className={styles.rowSkeleton} />
+          ) : maisVendidos.length === 0 ? (
+            <SecaoVazia icone="pi pi-chart-bar" titulo="Sem vendas no periodo." descricao="Use outro periodo ou registre vendas no PDV." />
+          ) : (
+            <div className={styles.compactList}>
+              {maisVendidos.slice(0, LIMITE_LISTA).map((produto, indice) => (
                 <article className={styles.compactItem} key={produto.produto_id}>
                   <strong>{indice + 1}. {produto.produto_nome}</strong>
                   <span>{formatarQuantidadeComUnidade(produto.total_vendido, produto.unidade_medida)}</span>
                   <small>{formatarMoeda(produto.receita_total)} em receita</small>
                 </article>
               ))}
+            </div>
+          )}
+        </section>
+
+        <section className={`${styles.infoPanel} ${styles.widePanel}`}>
+          <div className={styles.panelHeader}>
+            <div>
+              <span className={styles.eyebrow}>Series do periodo</span>
+              <h2>Vendas, alertas e perdas</h2>
+              <p>Graficos simples sem dependencia nova.</p>
+            </div>
+          </div>
+
+          {carregando ? (
+            <div className={styles.alertSkeletons}>
+              {Array.from({ length: 4 }, (_, indice) => <div className={styles.rowSkeleton} key={indice} />)}
+            </div>
+          ) : vendasPorDia.every((item) => Number(item.receita_total ?? 0) === 0) && alertasPorTipo.length === 0 ? (
+            <SecaoVazia icone="pi pi-chart-bar" titulo="Sem serie para exibir." descricao="Nao ha vendas nem alertas no periodo selecionado." />
+          ) : (
+            <div className={styles.chartGrid}>
+              <div className={styles.chartList}>
+                <strong>Receita por dia</strong>
+                {vendasPorDia.slice(-10).map((item) => (
+                  <div className={styles.chartRow} key={item.data}>
+                    <span>{formatarData(item.data)}</span>
+                    <div>
+                      <i style={{ width: `${(Number(item.receita_total ?? 0) / maiorReceitaSerie) * 100}%` }} />
+                    </div>
+                    <small>{formatarMoeda(item.receita_total)}</small>
+                  </div>
+                ))}
+              </div>
+              <div className={styles.chartList}>
+                <strong>Alertas e perdas</strong>
+                {[...alertasPorTipo, ...perdasPorTipo.map((item) => ({ tipo: `perda_${item.tipo}`, total: item.total_registros }))].map((item) => (
+                  <div className={styles.miniStat} key={item.tipo}>
+                    <span>{item.tipo}</span>
+                    <strong>{item.total}</strong>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </section>

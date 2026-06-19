@@ -52,6 +52,7 @@ def get_dashboard_inteligente():
     try:
         dias_previsao = parse_optional_positive_int_arg(request.args, "dias_previsao") or 7
         dias_validade = parse_optional_positive_int_arg(request.args, "dias_validade") or 3
+        limite = parse_optional_positive_int_arg(request.args, "limite") or 10
         data_inicial = parse_optional_date_arg(request.args, "data_inicial")
         data_final = parse_optional_date_arg(request.args, "data_final")
     except ValidationError as exc:
@@ -65,6 +66,7 @@ def get_dashboard_inteligente():
             RelatorioService(db.session).dashboard_inteligente(
                 dias_previsao=dias_previsao,
                 dias_validade=dias_validade,
+                limite=limite,
                 data_inicial=data_inicial,
                 data_final=data_final,
             )
