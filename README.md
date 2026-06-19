@@ -139,7 +139,8 @@ Dashboard Orientado a Decisao. Ele gera 42 produtos, sendo 40 ativos e 2
 inativos, mais de 300 movimentacoes distribuidas nos ultimos 90 a 120 dias,
 incluindo vendas, entradas, perdas, produtos de alto giro com estoque baixo,
 camadas vencidas, camadas proximas do vencimento, produtos parados, margens
-variadas e estoque saudavel. Ao final, o script imprime um resumo com
+variadas, margem baixa, perdas classificaveis por observacao e estoque saudavel.
+Ao final, o script imprime um resumo com
 quantidades, indicadores financeiros, validade e top 5 mais vendidos.
 
 Inicie a API:
@@ -243,16 +244,28 @@ O endpoint `GET /api/relatorios/dashboard-inteligente` consolida regras de negó
 - Sugestões de reposição baseadas em giro e estoque disponível.
 - Produtos vencidos ou próximos do vencimento.
 - Produtos parados ou com baixo giro.
+- Análise de margem, perdas, ranking de venda e séries para gráficos.
 - Resumo executivo com frases automáticas para orientar a ação.
 
 Parâmetros opcionais:
 
 | Parâmetro | Descrição | Padrão |
 | --- | --- | --- |
-| `dias_previsao` | Janela usada para previsão de giro e período padrão de análise. | `7` |
+| `dias_previsao` | Cobertura desejada para sugestão de reposição. | `7` |
 | `dias_validade` | Dias considerados para alerta de vencimento próximo. | `3` |
-| `data_inicial` | Início do período de análise no formato `YYYY-MM-DD`. | últimos `dias_previsao` dias |
+| `limite` | Quantidade máxima de itens nas listas priorizadas. | `10` |
+| `data_inicial` | Início do período de análise no formato `YYYY-MM-DD`. | últimos 30 dias |
 | `data_final` | Fim do período de análise no formato `YYYY-MM-DD`. | data atual |
+
+O contrato principal inclui `periodo_analise`, `saude_operacional`, `kpis`,
+`resumo_executivo`, `prioridades_hoje`, `sugestoes_reposicao`,
+`risco_validade`, `produtos_parados`, `analise_margem`, `analise_perdas`,
+`mais_vendidos` e `series_graficos`.
+
+Para validar manualmente no frontend, rode o seed, inicie API e frontend, entre
+com `admin@hortifruti.local / admin123` e abra `/dashboard`. A tela deve mostrar
+score operacional, KPIs, prioridades com causa/ação/impacto, reposição, validade,
+produtos parados, margem, perdas e top vendidos.
 
 ## Testes
 
