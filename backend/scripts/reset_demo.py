@@ -76,18 +76,22 @@ def ensure_usuarios_padrao():
         usuario.ativo = user_data["ativo"]
 
 
+def limpar_banco():
+    db.session.query(ConsumoSaida).delete()
+    db.session.query(CamadaEstoque).delete()
+    db.session.query(Movimentacao).delete()
+    db.session.query(Produto).delete()
+    db.session.query(Usuario).delete()
+    db.session.flush()
+
+    reset_auto_increment_if_mysql()
+
+
 def main():
     app = create_app()
 
     with app.app_context():
-        db.session.query(ConsumoSaida).delete()
-        db.session.query(CamadaEstoque).delete()
-        db.session.query(Movimentacao).delete()
-        db.session.query(Produto).delete()
-        db.session.query(Usuario).delete()
-        db.session.flush()
-
-        reset_auto_increment_if_mysql()
+        limpar_banco()
         ensure_usuarios_padrao()
 
         db.session.commit()

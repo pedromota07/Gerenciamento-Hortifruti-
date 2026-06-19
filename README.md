@@ -134,6 +134,14 @@ Para carregar uma base demonstrativa com produtos, usuários e movimentações:
 python scripts\seed_showcase.py
 ```
 
+Esse seed recria a base com dados realistas preparados para relatorios e para o
+Dashboard Orientado a Decisao. Ele gera 42 produtos, sendo 40 ativos e 2
+inativos, mais de 300 movimentacoes distribuidas nos ultimos 90 a 120 dias,
+incluindo vendas, entradas, perdas, produtos de alto giro com estoque baixo,
+camadas vencidas, camadas proximas do vencimento, produtos parados, margens
+variadas e estoque saudavel. Ao final, o script imprime um resumo com
+quantidades, indicadores financeiros, validade e top 5 mais vendidos.
+
 Inicie a API:
 
 ```powershell
