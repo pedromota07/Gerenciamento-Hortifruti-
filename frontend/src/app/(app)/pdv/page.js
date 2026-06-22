@@ -8,7 +8,7 @@ import { Toast } from "primereact/toast";
 
 import EstadoVazio from "@/components/EstadoVazio";
 import ProdutoVisual from "@/components/ProdutoVisual";
-import { registrarSaida } from "@/services/servicoMovimentacoes";
+import { registrarVendaLote } from "@/services/servicoMovimentacoes";
 import { buscarProdutos } from "@/services/servicoProdutos";
 import { formatarMoeda, formatarQuantidadeComUnidade } from "@/utils/formatters";
 import { estoqueEstaBaixo } from "@/utils/produtos";
@@ -30,6 +30,22 @@ function carregarVendasDaSessao() {
   }
 }
 
+function obterEstoqueDisponivel(produto) {
+  return Number(produto?.quantidade_disponivel_venda ?? produto?.quantidade_atual ?? 0);
+}
+
+function montarItemCarrinho(produto, quantidade, precoUnitario) {
+  return {
+    produto_id: produto.id,
+    produto_nome: produto.nome,
+    categoria: produto.categoria,
+    unidade_medida: produto.unidade_medida,
+    estoque_disponivel: obterEstoqueDisponivel(produto),
+    preco_unitario_venda: precoUnitario,
+    quantidade
+  };
+}
+
 export default function PaginaPdv() {
   const notificacaoRef = useRef(null);
   const buscaRef = useRef(null);
@@ -42,6 +58,7 @@ export default function PaginaPdv() {
   const [salvando, setSalvando] = useState(false);
   const [mensagem, setMensagem] = useState(null);
   const [errosVenda, setErrosVenda] = useState({});
+  const [carrinho, setCarrinho] = useState([]);
   const [ultimasVendas, setUltimasVendas] = useState(carregarVendasDaSessao);
   const [ultimaVendaConfirmada, setUltimaVendaConfirmada] = useState(null);
 
@@ -82,16 +99,22 @@ export default function PaginaPdv() {
   }, [busca, produtos]);
 
   const precoUnitario = Number(produtoSelecionado?.preco_venda_padrao ?? 0);
-  const estoqueDisponivel = Number(
-    produtoSelecionado?.quantidade_disponivel_venda ?? produtoSelecionado?.quantidade_atual ?? 0
+  const estoqueDisponivel = obterEstoqueDisponivel(produtoSelecionado);
+  const quantidadeNoCarrinho = produtoSelecionado
+    ? carrinho.find((item) => item.produto_id === produtoSelecionado.id)?.quantidade ?? 0
+    : 0;
+  const estoqueRestanteParaAdicionar = Math.max(estoqueDisponivel - quantidadeNoCarrinho, 0);
+  const subtotalSelecao = produtoSelecionado ? Number(quantidade ?? 0) * precoUnitario : 0;
+  const totalCarrinho = carrinho.reduce(
+    (total, item) => total + Number(item.quantidade) * Number(item.preco_unitario_venda),
+    0
   );
-  const saldoResultante = produtoSelecionado ? estoqueDisponivel - Number(quantidade ?? 0) : null;
-  const totalVenda = produtoSelecionado ? Number(quantidade ?? 0) * precoUnitario : 0;
-  const vendaPronta =
+  const itemPronto =
     Boolean(produtoSelecionado) &&
     Number(quantidade) > 0 &&
-    Number(quantidade) <= estoqueDisponivel &&
+    Number(quantidade) <= estoqueRestanteParaAdicionar &&
     !salvando;
+  const vendaPronta = carrinho.length > 0 && !salvando;
 
   function selecionarProduto(produto) {
     setProdutoId(produto.id);
@@ -111,17 +134,27 @@ export default function PaginaPdv() {
     buscaRef.current?.focus();
   }
 
+  function limparSelecao() {
+    setProdutoId(null);
+    setBusca("");
+    setQuantidade(null);
+    setErrosVenda((errosAtuais) => ({ ...errosAtuais, produto: null, quantidade: null }));
+    setUltimaVendaConfirmada(null);
+    buscaRef.current?.focus();
+  }
+
   function limparVenda() {
     setProdutoId(null);
     setBusca("");
     setQuantidade(null);
+    setCarrinho([]);
     setMensagem(null);
     setErrosVenda({});
     setUltimaVendaConfirmada(null);
     buscaRef.current?.focus();
   }
 
-  async function confirmarVenda() {
+  function adicionarAoCarrinho() {
     const novosErros = {};
 
     if (!produtoSelecionado) {
@@ -132,7 +165,7 @@ export default function PaginaPdv() {
       novosErros.quantidade = "Informe uma quantidade maior que zero.";
     }
 
-    if (produtoSelecionado && Number(quantidade) > estoqueDisponivel) {
+    if (produtoSelecionado && Number(quantidade) > estoqueRestanteParaAdicionar) {
       novosErros.quantidade = "A quantidade excede o estoque disponível para venda.";
     }
 
@@ -141,50 +174,111 @@ export default function PaginaPdv() {
       return;
     }
 
+    const quantidadeInformada = Number(quantidade);
+    setCarrinho((itensAtuais) => {
+      const itemExistente = itensAtuais.find((item) => item.produto_id === produtoSelecionado.id);
+
+      if (itemExistente) {
+        return itensAtuais.map((item) =>
+          item.produto_id === produtoSelecionado.id
+            ? { ...item, quantidade: Number((item.quantidade + quantidadeInformada).toFixed(3)) }
+            : item
+        );
+      }
+
+      return [...itensAtuais, montarItemCarrinho(produtoSelecionado, quantidadeInformada, precoUnitario)];
+    });
+    setProdutoId(null);
+    setBusca("");
+    setQuantidade(null);
+    setErrosVenda({});
+    setUltimaVendaConfirmada(null);
+    buscaRef.current?.focus();
+  }
+
+  function atualizarQuantidadeCarrinho(produtoIdAtual, novaQuantidade) {
+    const quantidadeNormalizada = Number(novaQuantidade ?? 0);
+    const itemAtual = carrinho.find((item) => item.produto_id === produtoIdAtual);
+
+    if (!itemAtual) {
+      return;
+    }
+
+    if (quantidadeNormalizada <= 0) {
+      removerItemCarrinho(produtoIdAtual);
+      return;
+    }
+
+    if (quantidadeNormalizada > itemAtual.estoque_disponivel) {
+      setErrosVenda({ carrinho: `Quantidade acima do estoque disponível para ${itemAtual.produto_nome}.` });
+      return;
+    }
+
+    setErrosVenda((errosAtuais) => ({ ...errosAtuais, carrinho: null }));
+    setCarrinho((itensAtuais) =>
+      itensAtuais.map((item) =>
+        item.produto_id === produtoIdAtual
+          ? { ...item, quantidade: Number(quantidadeNormalizada.toFixed(3)) }
+          : item
+      )
+    );
+  }
+
+  function removerItemCarrinho(produtoIdAtual) {
+    setCarrinho((itensAtuais) => itensAtuais.filter((item) => item.produto_id !== produtoIdAtual));
+    setErrosVenda((errosAtuais) => ({ ...errosAtuais, carrinho: null }));
+  }
+
+  async function confirmarVenda() {
+    if (carrinho.length === 0) {
+      setErrosVenda({ carrinho: "Adicione pelo menos um produto ao carrinho." });
+      return;
+    }
+
     setSalvando(true);
     setMensagem(null);
 
     try {
-      const resposta = await registrarSaida({
-        produto_id: produtoSelecionado.id,
-        quantidade: Number(quantidade).toFixed(3),
-        subtipo: "venda",
-        preco_unitario_venda: precoUnitario.toFixed(2)
+      const resposta = await registrarVendaLote({
+        itens: carrinho.map((item) => ({
+          produto_id: item.produto_id,
+          quantidade: Number(item.quantidade).toFixed(3),
+          preco_unitario_venda: Number(item.preco_unitario_venda).toFixed(2)
+        }))
       });
 
-      const produtoAtualizado = resposta.produto;
+      const produtosAtualizados = resposta.itens.map((item) => item.produto);
+      const vendasRegistradas = resposta.itens.map((item) => ({
+        id: item.movimentacao.id,
+        produto_nome: item.produto.nome,
+        categoria: item.produto.categoria,
+        quantidade: item.movimentacao.quantidade,
+        saldo_disponivel: item.produto.quantidade_disponivel_venda,
+        unidade_medida: item.produto.unidade_medida,
+        receita_total: item.movimentacao.receita_total,
+        lucro_bruto: item.movimentacao.lucro_bruto
+      }));
 
       setProdutos((produtosAtuais) =>
-        produtosAtuais.map((produto) => (produto.id === produtoAtualizado.id ? produtoAtualizado : produto))
+        produtosAtuais.map((produto) => {
+          const produtoAtualizado = produtosAtualizados.find((item) => item.id === produto.id);
+          return produtoAtualizado ?? produto;
+        })
       );
-      setUltimasVendas((vendasAtuais) =>
-        [
-          {
-            id: resposta.movimentacao.id,
-            produto_nome: produtoAtualizado.nome,
-            categoria: produtoAtualizado.categoria,
-            quantidade: resposta.movimentacao.quantidade,
-            saldo_disponivel: produtoAtualizado.quantidade_disponivel_venda,
-            unidade_medida: produtoAtualizado.unidade_medida,
-            receita_total: resposta.movimentacao.receita_total,
-            lucro_bruto: resposta.movimentacao.lucro_bruto
-          },
-          ...vendasAtuais
-        ].slice(0, 5)
-      );
+      setUltimasVendas((vendasAtuais) => [...vendasRegistradas, ...vendasAtuais].slice(0, 5));
       setUltimaVendaConfirmada({
-        produto_nome: produtoAtualizado.nome,
-        quantidade: resposta.movimentacao.quantidade,
-        receita_total: resposta.movimentacao.receita_total
+        total_itens: resposta.total_itens,
+        receita_total: resposta.receita_total
       });
       setProdutoId(null);
       setBusca("");
       setQuantidade(null);
+      setCarrinho([]);
       setErrosVenda({});
       notificacaoRef.current?.show({
         severity: "success",
         summary: "Venda registrada",
-        detail: `${produtoAtualizado.nome} vendido com sucesso por ${formatarMoeda(resposta.movimentacao.receita_total)}.`,
+        detail: `${resposta.total_itens} item(ns) vendidos por ${formatarMoeda(resposta.receita_total)}.`,
         life: 3000
       });
       buscaRef.current?.focus();
@@ -339,8 +433,8 @@ export default function PaginaPdv() {
             <div>
               <span className={styles.step}>2</span>
               <div>
-                <h2>Resumo da venda</h2>
-                <p>Confira os dados antes de confirmar</p>
+                <h2>Carrinho da venda</h2>
+                <p>Adicione os itens e confirme tudo de uma vez</p>
               </div>
             </div>
           </div>
@@ -357,10 +451,10 @@ export default function PaginaPdv() {
                   <span>Produto selecionado</span>
                   <strong>{produtoSelecionado.nome}</strong>
                   <small>
-                    {formatarQuantidadeComUnidade(estoqueDisponivel, produtoSelecionado.unidade_medida)} disponíveis
+                    {formatarQuantidadeComUnidade(estoqueRestanteParaAdicionar, produtoSelecionado.unidade_medida)} livres para adicionar
                   </small>
                 </div>
-                <button type="button" onClick={limparVenda} aria-label="Remover produto da venda">
+                <button type="button" onClick={limparSelecao} aria-label="Remover produto da seleção">
                   <i className="pi pi-times" aria-hidden="true" />
                 </button>
               </div>
@@ -379,7 +473,7 @@ export default function PaginaPdv() {
                   inputId="pdv-quantidade-input"
                   inputClassName={errosVenda.quantidade ? "p-invalid" : ""}
                   min={0}
-                  max={estoqueDisponivel}
+                  max={estoqueRestanteParaAdicionar}
                   minFractionDigits={0}
                   maxFractionDigits={3}
                   mode="decimal"
@@ -391,18 +485,33 @@ export default function PaginaPdv() {
                     setErrosVenda((errosAtuais) => ({ ...errosAtuais, quantidade: null }));
                   }}
                   onKeyDown={(evento) => {
-                    if (evento.key === "Enter" && vendaPronta) {
+                    if (evento.key === "Enter" && itemPronto) {
                       evento.preventDefault();
-                      confirmarVenda();
+                      adicionarAoCarrinho();
                     }
                   }}
                 />
                 {errosVenda.quantidade ? (
                   <small className={styles.fieldError}>{errosVenda.quantidade}</small>
                 ) : (
-                  <small>Máximo disponível: {formatarQuantidadeComUnidade(estoqueDisponivel, produtoSelecionado.unidade_medida)}</small>
+                  <small>
+                    Já no carrinho: {formatarQuantidadeComUnidade(quantidadeNoCarrinho, produtoSelecionado.unidade_medida)}
+                  </small>
                 )}
               </div>
+
+              <div className={styles.selectionSummary}>
+                <span>Subtotal do item</span>
+                <strong>{formatarMoeda(subtotalSelecao)}</strong>
+              </div>
+
+              <Button
+                className={styles.addItemButton}
+                label={quantidadeNoCarrinho > 0 ? "Somar ao carrinho" : "Adicionar item"}
+                icon="pi pi-plus"
+                onClick={adicionarAoCarrinho}
+                disabled={!itemPronto}
+              />
             </>
           ) : (
             <div className={styles.checkoutEmpty}>
@@ -410,31 +519,77 @@ export default function PaginaPdv() {
                 <i className="pi pi-arrow-left" aria-hidden="true" />
               </span>
               <strong>Selecione um produto</strong>
-              <p>Os valores e a quantidade da venda aparecerão aqui.</p>
+              <p>O item selecionado será preparado antes de entrar no carrinho.</p>
             </div>
           )}
 
+          <div className={styles.cartBlock}>
+            <div className={styles.cartHeader}>
+              <strong>Itens da venda</strong>
+              <span>{carrinho.length} produto(s)</span>
+            </div>
+
+            {errosVenda.carrinho ? <small className={styles.fieldError}>{errosVenda.carrinho}</small> : null}
+
+            {carrinho.length === 0 ? (
+              <div className={styles.cartEmpty}>
+                <EstadoVazio
+                  icone="pi pi-shopping-cart"
+                  titulo="Carrinho vazio."
+                  descricao="Adicione banana, maçã ou qualquer outro produto antes de confirmar."
+                />
+              </div>
+            ) : (
+              <div className={styles.cartList}>
+                {carrinho.map((item) => (
+                  <article className={styles.cartItem} key={item.produto_id}>
+                    <ProdutoVisual nome={item.produto_nome} categoria={item.categoria} tamanho="compacto" />
+                    <div className={styles.cartItemMain}>
+                      <strong>{item.produto_nome}</strong>
+                      <span>{formatarMoeda(item.preco_unitario_venda)} por {item.unidade_medida}</span>
+                    </div>
+                    <InputNumber
+                      inputClassName={styles.cartQuantityInput}
+                      min={0}
+                      max={item.estoque_disponivel}
+                      minFractionDigits={0}
+                      maxFractionDigits={3}
+                      mode="decimal"
+                      value={item.quantidade}
+                      suffix={` ${item.unidade_medida}`}
+                      onValueChange={(evento) => atualizarQuantidadeCarrinho(item.produto_id, evento.value)}
+                    />
+                    <div className={styles.cartSubtotal}>
+                      <span>Total</span>
+                      <strong>{formatarMoeda(Number(item.quantidade) * Number(item.preco_unitario_venda))}</strong>
+                    </div>
+                    <button type="button" onClick={() => removerItemCarrinho(item.produto_id)} aria-label={`Remover ${item.produto_nome}`}>
+                      <i className="pi pi-trash" aria-hidden="true" />
+                    </button>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className={styles.totals}>
             <div>
-              <span>Preço unitário</span>
-              <strong>{produtoSelecionado ? formatarMoeda(precoUnitario) : "--"}</strong>
-            </div>
-            <div>
-              <span>Saldo após venda</span>
-              <strong>
-                {saldoResultante != null && produtoSelecionado
-                  ? formatarQuantidadeComUnidade(saldoResultante, produtoSelecionado.unidade_medida)
-                  : "--"}
-              </strong>
+              <span>Produtos no carrinho</span>
+              <strong>{carrinho.length}</strong>
             </div>
             <div className={styles.grandTotal}>
-              <span>Total da venda</span>
-              <strong>{formatarMoeda(totalVenda)}</strong>
+              <span>Total geral</span>
+              <strong>{formatarMoeda(totalCarrinho)}</strong>
             </div>
           </div>
 
           <div className={styles.actions}>
-            <Button label="Limpar" text onClick={limparVenda} disabled={!produtoSelecionado && !busca} />
+            <Button
+              label="Limpar"
+              text
+              onClick={limparVenda}
+              disabled={carrinho.length === 0 && !produtoSelecionado && !busca}
+            />
             <Button
               className={styles.confirmButton}
               label="Confirmar venda"
@@ -451,7 +606,7 @@ export default function PaginaPdv() {
               <div>
                 <strong>Venda registrada</strong>
                 <span>
-                  {ultimaVendaConfirmada.produto_nome} por {formatarMoeda(ultimaVendaConfirmada.receita_total)}
+                  {ultimaVendaConfirmada.total_itens} item(ns) por {formatarMoeda(ultimaVendaConfirmada.receita_total)}
                 </span>
               </div>
             </div>

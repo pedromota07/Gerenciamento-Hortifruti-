@@ -236,7 +236,8 @@
 
 .productCard:focus-visible,
 .clearSearch:focus-visible,
-.selectedProduct button:focus-visible {
+.selectedProduct button:focus-visible,
+.cartItem button:focus-visible {
   outline: 3px solid rgba(47, 111, 78, 0.2);
   outline-offset: 2px;
 }
@@ -350,6 +351,34 @@
   font-weight: 700;
 }
 
+.selectionSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 11px 12px;
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+
+.selectionSummary span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.selectionSummary strong {
+  color: var(--accent-strong);
+}
+
+.addItemButton {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 12px;
+  font-weight: 800;
+}
+
 .quantityField {
   display: grid;
   gap: 7px;
@@ -396,6 +425,110 @@
   max-width: 28ch;
   margin-top: 4px;
   font-size: 0.86rem;
+}
+
+.cartBlock {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.cartHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cartHeader strong {
+  font-size: 0.94rem;
+}
+
+.cartHeader span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.cartEmpty {
+  padding: 4px 0;
+}
+
+.cartList {
+  display: grid;
+  gap: 10px;
+}
+
+.cartItem {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.cartItemMain {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.cartItemMain strong {
+  overflow: hidden;
+  font-size: 0.88rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cartItemMain span,
+.cartSubtotal span {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.cartItem :global(.p-inputnumber) {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.cartQuantityInput {
+  width: 100%;
+  min-height: 42px;
+  font-weight: 800;
+}
+
+.cartSubtotal {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cartSubtotal strong {
+  color: var(--accent-strong);
+}
+
+.cartItem button {
+  display: inline-grid;
+  width: 34px;
+  height: 34px;
+  grid-column: 1 / -1;
+  justify-self: end;
+  place-items: center;
+  border: 0;
+  border-radius: 9px;
+  background: #fff1f0;
+  color: var(--tomato);
+  cursor: pointer;
+}
+
+.cartItem button:hover {
+  background: #ffe2de;
 }
 
 .totals {

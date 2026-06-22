@@ -1,6 +1,6 @@
 from collections import Counter
 from datetime import date, timedelta
-from decimal import Decimal, ROUND_CEILING
+from decimal import Decimal, ROUND_CEILING, ROUND_HALF_UP
 
 from sqlalchemy import func, select
 
@@ -241,10 +241,14 @@ class DashboardInteligenteService:
         vendas_por_produto = self._vendas_por_produto(data_inicial, data_final)
         ultimas_vendas = self._ultimas_vendas_por_produto()
         analises_produtos = self._analisar_produtos(vendas_por_produto, ultimas_vendas, dias_periodo, hoje)
-        risco_validade = self._analisar_validade(dias_validade, limite, hoje)
-        produtos_parados = self._montar_produtos_parados(analises_produtos, limite)
-        analise_margem = self._montar_analise_margem(analises_produtos, limite)
-        analise_perdas, perdas_por_tipo = self._montar_analise_perdas(data_inicial, data_final, limite)
+        risco_validade_completo = self._analisar_validade(dias_validade, None, hoje)
+        risco_validade = self._limitar_risco_validade(risco_validade_completo, limite)
+        produtos_parados_completos = self._montar_produtos_parados(analises_produtos, None)
+        produtos_parados = produtos_parados_completos[:limite]
+        analise_margem_completa = self._montar_analise_margem(analises_produtos, None)
+        analise_margem = analise_margem_completa[:limite]
+        analise_perdas_completa, perdas_por_tipo = self._montar_analise_perdas(data_inicial, data_final, None)
+        analise_perdas = analise_perdas_completa[:limite]
         receita_total = self._decimal(financeiro["receita_total"])
         lucro_bruto_total = self._decimal(financeiro["lucro_bruto_total"])
         perdas_total_custo = self._decimal(financeiro["perdas_total_custo"])
@@ -256,19 +260,19 @@ class DashboardInteligenteService:
         sugestoes_reposicao = self._montar_sugestoes_reposicao(analises_produtos, dias_previsao, limite)
         prioridades = self._montar_prioridades(
             analises_produtos,
-            risco_validade,
-            produtos_parados,
-            analise_margem,
-            analise_perdas,
+            risco_validade_completo,
+            produtos_parados_completos,
+            analise_margem_completa,
+            analise_perdas_completa,
             perdas_relevantes,
         )
 
         alertas_criticos = sum(1 for prioridade in prioridades if prioridade["prioridade"] == "critica")
         saude_operacional = self._calcular_saude_operacional(
             prioridades,
-            risco_validade,
+            risco_validade_completo,
             analises_produtos,
-            produtos_parados,
+            produtos_parados_completos,
             perdas_total_custo,
             lucro_bruto_total,
             margem_geral,
@@ -283,10 +287,10 @@ class DashboardInteligenteService:
             "perdas_total_custo": self._float(perdas_total_custo, 2),
             "alertas_total": len(prioridades),
             "alertas_criticos": alertas_criticos,
-            "produtos_vencidos": len(risco_validade["vencidos"]),
-            "produtos_proximos_vencimento": len(risco_validade["proximos_vencimento"]),
+            "produtos_vencidos": len(risco_validade_completo["vencidos"]),
+            "produtos_proximos_vencimento": len(risco_validade_completo["proximos_vencimento"]),
             "produtos_estoque_baixo": sum(1 for produto in analises_produtos if produto["estoque_baixo"]),
-            "produtos_parados": len(produtos_parados),
+            "produtos_parados": len(produtos_parados_completos),
             "total_alertas": len(prioridades),
         }
 
@@ -303,12 +307,12 @@ class DashboardInteligenteService:
             "resumo_executivo": self._montar_resumo_executivo(
                 prioridades,
                 sugestoes_reposicao,
-                risco_validade,
-                analise_margem,
-                analise_perdas,
+                risco_validade_completo,
+                analise_margem_completa,
+                analise_perdas_completa,
                 saude_operacional,
             ),
-            "prioridades_hoje": self._limitar_prioridades(prioridades, limite),
+            "prioridades_hoje": self._limitar_prioridades(prioridades),
             "sugestoes_reposicao": sugestoes_reposicao,
             "risco_validade": risco_validade,
             "produtos_parados": produtos_parados,
@@ -533,14 +537,21 @@ class DashboardInteligenteService:
         valor_total = sum(item["valor_em_risco"] for item in vencidos + proximos)
 
         return {
-            "vencidos": vencidos[:limite],
-            "proximos_vencimento": proximos[:limite],
+            "vencidos": vencidos if limite is None else vencidos[:limite],
+            "proximos_vencimento": proximos if limite is None else proximos[:limite],
             "valor_em_risco": self._float(valor_total, 2),
             "acao_geral_sugerida": (
-                "Retirar vencidos imediatamente e priorizar promocao dos itens proximos."
+                "Retirar vencidos imediatamente e priorizar promoção dos itens próximos."
                 if valor_total > 0
-                else "Sem acao emergencial de validade no momento."
+                else "Sem ação emergencial de validade no momento."
             ),
+        }
+
+    def _limitar_risco_validade(self, risco_validade, limite):
+        return {
+            **risco_validade,
+            "vencidos": risco_validade["vencidos"][:limite],
+            "proximos_vencimento": risco_validade["proximos_vencimento"][:limite],
         }
 
     def _montar_produtos_parados(self, analises_produtos, limite):
@@ -566,7 +577,7 @@ class DashboardInteligenteService:
             if not ((sem_venda_recente and estoque_antigo) or baixo_giro):
                 continue
 
-            acao = "Fazer promocao" if produto["valor_estoque_custo"] > Decimal("50") else "Reposicionar exposicao"
+            acao = "Fazer promoção" if produto["valor_estoque_custo"] > Decimal("50") else "Reposicionar exposição"
             produtos.append(
                 {
                     **self._metricas_produto(produto),
@@ -574,11 +585,12 @@ class DashboardInteligenteService:
                     "dias_sem_venda": produto["dias_sem_venda"],
                     "prioridade": "baixa",
                     "acao_sugerida": acao,
-                    "mensagem": f"{produto['produto_nome']} esta com estoque e sem giro recente.",
+                    "mensagem": f"{produto['produto_nome']} está com estoque e sem giro recente.",
                 }
             )
 
-        return sorted(produtos, key=lambda item: item["valor_parado_custo"], reverse=True)[:limite]
+        produtos = sorted(produtos, key=lambda item: item["valor_parado_custo"], reverse=True)
+        return produtos if limite is None else produtos[:limite]
 
     def _montar_analise_margem(self, analises_produtos, limite):
         analises = []
@@ -590,7 +602,7 @@ class DashboardInteligenteService:
             if margem < Decimal("10"):
                 classificacao = "critica"
                 prioridade = "alta"
-                acao = "Revisar preco de venda e custo de compra"
+                acao = "Revisar preço de venda e custo de compra"
             elif margem < Decimal("20"):
                 classificacao = "baixa"
                 prioridade = "media"
@@ -602,7 +614,7 @@ class DashboardInteligenteService:
             else:
                 classificacao = "boa"
                 prioridade = "baixa"
-                acao = "Manter estrategia comercial"
+                acao = "Manter estratégia comercial"
 
             analises.append(
                 {
@@ -620,7 +632,8 @@ class DashboardInteligenteService:
                 }
             )
 
-        return sorted(analises, key=lambda item: (item["margem_percentual"], -item["receita_total"]))[:limite]
+        analises = sorted(analises, key=lambda item: (item["margem_percentual"], -item["receita_total"]))
+        return analises if limite is None else analises[:limite]
 
     def _montar_analise_perdas(self, data_inicial, data_final, limite):
         rows = self.session.execute(
@@ -662,9 +675,9 @@ class DashboardInteligenteService:
             item["total_registros"] += 1
             item["tipos"][tipo_perda] += 1
             if tipo_perda == "avaria":
-                item["acao_sugerida"] = "Melhorar manuseio e conferencia de recebimento"
+                item["acao_sugerida"] = "Melhorar manuseio e conferência de recebimento"
             elif tipo_perda == "vencimento":
-                item["acao_sugerida"] = "Aumentar giro com promocao e reduzir compra"
+                item["acao_sugerida"] = "Aumentar giro com promoção e reduzir compra"
 
         analise = [
             {
@@ -686,7 +699,7 @@ class DashboardInteligenteService:
             }
             for tipo in sorted(por_tipo)
         ]
-        return analise[:limite], perdas_por_tipo
+        return (analise if limite is None else analise[:limite]), perdas_por_tipo
 
     def _montar_sugestoes_reposicao(self, analises_produtos, dias_previsao, limite):
         sugestoes = []
@@ -716,18 +729,19 @@ class DashboardInteligenteService:
             quantidade_sugerida = max(quantidade_sugerida, Decimal("0"))
             quantidade_sugerida = self._arredondar_quantidade(quantidade_sugerida, produto["unidade_medida"])
             cobertura_texto = self._formatar_dias(dias_cobertura) if dias_cobertura is not None else "sem cobertura calculada"
+            casas_quantidade = self._casas_quantidade_reposicao(produto["unidade_medida"])
+            quantidade_texto = self._formatar_quantidade_reposicao(quantidade_sugerida, produto["unidade_medida"])
             sugestoes.append(
                 {
                     **self._metricas_produto(produto),
                     "venda_total_periodo": self._float(produto["quantidade_vendida_periodo"]),
                     "media_venda_diaria": self._float(media),
                     "dias_cobertura": self._float(dias_cobertura, 1) if dias_cobertura is not None else None,
-                    "quantidade_sugerida": self._float(quantidade_sugerida),
+                    "quantidade_sugerida": self._float(quantidade_sugerida, casas_quantidade),
                     "prioridade": prioridade,
                     "justificativa": (
-                        f"Comprar aproximadamente {self._float(quantidade_sugerida)} "
-                        f"{produto['unidade_medida']} de {produto['produto_nome']} para cobrir "
-                        f"{dias_previsao} dias de venda media; cobertura atual: {cobertura_texto}."
+                        f"Comprar aproximadamente {quantidade_texto} de {produto['produto_nome']} para cobrir "
+                        f"{dias_previsao} dias de venda média; cobertura atual: {cobertura_texto}."
                     ),
                 }
             )
@@ -761,8 +775,8 @@ class DashboardInteligenteService:
                     100,
                     item["produto_id"],
                     item["produto_nome"],
-                    f"{item['produto_nome']} possui estoque vencido disponivel.",
-                    f"Ha {item['quantidade_em_risco']} {item['unidade_medida']} vencidos desde {item['data_validade']}.",
+                    f"{item['produto_nome']} possui estoque vencido disponível.",
+                    f"Há {item['quantidade_em_risco']} {item['unidade_medida']} vencidos desde {item['data_validade']}.",
                     "Registrar perda ou retirar do estoque imediatamente",
                     f"R$ {item['valor_em_risco']:.2f} em custo vencido.",
                     {"quantidade_em_risco": item["quantidade_em_risco"], "valor_em_risco": item["valor_em_risco"]},
@@ -781,9 +795,9 @@ class DashboardInteligenteService:
                         95,
                         produto["produto_id"],
                         produto["produto_nome"],
-                        f"{produto['produto_nome']} pode acabar em ate 1 dia.",
-                        "A media diaria de venda supera a cobertura do estoque vendavel.",
-                        "Repor estoque com urgencia",
+                        f"{produto['produto_nome']} pode acabar em até 1 dia.",
+                        "A média diária de venda supera a cobertura do estoque vendável.",
+                        "Repor estoque com urgência",
                         "Risco de perder vendas por falta de produto.",
                         self._metricas_produto(produto),
                         produto["valor_estoque_custo"],
@@ -801,10 +815,10 @@ class DashboardInteligenteService:
                         pontuacao,
                         produto["produto_id"],
                         produto["produto_nome"],
-                        f"{produto['produto_nome']} esta abaixo do estoque minimo.",
-                        f"Estoque vendavel de {self._float(produto['estoque_disponivel_venda'])} "
-                        f"{produto['unidade_medida']} contra minimo de {self._float(produto['estoque_minimo'])}.",
-                        "Planejar reposicao",
+                        f"{produto['produto_nome']} está abaixo do estoque mínimo.",
+                        f"Estoque vendável de {self._float(produto['estoque_disponivel_venda'])} "
+                        f"{produto['unidade_medida']} contra mínimo de {self._float(produto['estoque_minimo'])}.",
+                        "Planejar reposição",
                         "Pode afetar o atendimento se o giro continuar.",
                         self._metricas_produto(produto),
                         produto["valor_estoque_custo"],
@@ -822,7 +836,7 @@ class DashboardInteligenteService:
                     pontuacao,
                     item["produto_id"],
                     item["produto_nome"],
-                    f"{item['produto_nome']} esta proximo do vencimento.",
+                    f"{item['produto_nome']} está próximo do vencimento.",
                     f"Validade em {item['dias_para_vencer']} dia(s), com {item['quantidade_em_risco']} "
                     f"{item['unidade_medida']} em risco.",
                     item["acao_sugerida"],
@@ -842,7 +856,7 @@ class DashboardInteligenteService:
                         70,
                         item["produto_id"],
                         item["produto_nome"],
-                        f"{item['produto_nome']} concentrou perdas no periodo.",
+                        f"{item['produto_nome']} concentrou perdas no período.",
                         f"Foram {item['total_registros']} registro(s), principalmente por {item['principal_tipo']}.",
                         item["acao_sugerida"],
                         f"R$ {item['custo_total']:.2f} em perdas.",
@@ -862,7 +876,7 @@ class DashboardInteligenteService:
                     item["produto_id"],
                     item["produto_nome"],
                     f"{item['produto_nome']} vendeu com margem {item['classificacao']}.",
-                    f"Margem de {item['margem_percentual']:.2f}% no periodo.",
+                    f"Margem de {item['margem_percentual']:.2f}% no período.",
                     item["acao_sugerida"],
                     f"Receita de R$ {item['receita_total']:.2f} gerou lucro de R$ {item['lucro_bruto_total']:.2f}.",
                     item,
@@ -879,7 +893,7 @@ class DashboardInteligenteService:
                     45,
                     item["produto_id"],
                     item["produto_nome"],
-                    f"{item['produto_nome']} esta parado com estoque disponivel.",
+                    f"{item['produto_nome']} está parado com estoque disponível.",
                     "Produto ativo com estoque e sem venda recente ou giro muito baixo.",
                     item["acao_sugerida"],
                     f"R$ {item['valor_parado_custo']:.2f} parados em estoque.",
@@ -936,13 +950,13 @@ class DashboardInteligenteService:
 
         if score >= Decimal("80"):
             classificacao = "saudavel"
-            mensagem = "Operacao saudavel, sem riscos criticos no momento."
+            mensagem = "Operação saudável, sem riscos críticos no momento."
         elif score >= Decimal("55"):
             classificacao = "atencao"
-            mensagem = "Operacao requer atencao por risco de validade e reposicao."
+            mensagem = "Operação requer atenção por risco de validade e reposição."
         else:
             classificacao = "critica"
-            mensagem = "Operacao critica: existem produtos vencidos, ruptura prevista ou perdas relevantes."
+            mensagem = "Operação crítica: existem produtos vencidos, ruptura prevista ou perdas relevantes."
 
         return {
             "score": self._float(score, 0),
@@ -975,7 +989,7 @@ class DashboardInteligenteService:
                 {
                     "tipo": "risco",
                     "prioridade": "critica",
-                    "mensagem": f"Existem {len(criticos)} alertas criticos hoje; trate vencidos e rupturas primeiro.",
+                    "mensagem": f"Existem {len(criticos)} alertas críticos hoje; trate vencidos e rupturas primeiro.",
                 }
             )
         if sugestoes_reposicao:
@@ -986,7 +1000,7 @@ class DashboardInteligenteService:
                     "prioridade": produto["prioridade"],
                     "mensagem": (
                         f"{produto['produto_nome']} deve ser priorizado na compra: "
-                        f"estoque cobre {produto['dias_cobertura']} dia(s) de venda media."
+                        f"estoque cobre {produto['dias_cobertura']} dia(s) de venda média."
                     ),
                 }
             )
@@ -995,7 +1009,7 @@ class DashboardInteligenteService:
                 {
                     "tipo": "validade",
                     "prioridade": "alta" if risco_validade["vencidos"] else "media",
-                    "mensagem": f"Ha R$ {risco_validade['valor_em_risco']:.2f} em estoque vencido ou proximo do vencimento.",
+                    "mensagem": f"Há R$ {risco_validade['valor_em_risco']:.2f} em estoque vencido ou próximo do vencimento.",
                 }
             )
         margens_baixas = [item for item in analise_margem if item["classificacao"] in ("critica", "baixa")]
@@ -1004,7 +1018,7 @@ class DashboardInteligenteService:
                 {
                     "tipo": "financeiro",
                     "prioridade": "media",
-                    "mensagem": f"{len(margens_baixas)} produto(s) vendidos tem margem abaixo de 20%.",
+                    "mensagem": f"{len(margens_baixas)} produto(s) vendidos têm margem abaixo de 20%.",
                 }
             )
         if analise_perdas:
@@ -1013,7 +1027,7 @@ class DashboardInteligenteService:
                 {
                     "tipo": "risco",
                     "prioridade": "alta",
-                    "mensagem": f"{produto['produto_nome']} lidera perdas no periodo com R$ {produto['custo_total']:.2f}.",
+                    "mensagem": f"{produto['produto_nome']} lidera perdas no período com R$ {produto['custo_total']:.2f}.",
                 }
             )
         if not resumo:
@@ -1094,9 +1108,10 @@ class DashboardInteligenteService:
             "_data_validade_ordenacao": data_validade or "9999-12-31",
         }
 
-    def _limitar_prioridades(self, prioridades, limite):
+    def _limitar_prioridades(self, prioridades, limite=None):
         itens = []
-        for prioridade in prioridades[:limite]:
+        prioridades_visiveis = prioridades if limite is None else prioridades[:limite]
+        for prioridade in prioridades_visiveis:
             item = dict(prioridade)
             item.pop("_impacto_ordenacao", None)
             item.pop("_dias_cobertura_ordenacao", None)
@@ -1125,7 +1140,7 @@ class DashboardInteligenteService:
         if dias_para_vencer == 0:
             return "Priorizar venda hoje ou avaliar perda"
         if dias_para_vencer <= 3:
-            return "Criar promocao ou priorizar exposicao"
+            return "Criar promoção ou priorizar exposição"
         return "Acompanhar validade"
 
     def _classificar_perda(self, observacao):
@@ -1141,7 +1156,19 @@ class DashboardInteligenteService:
             return Decimal("0")
         if unidade_medida in ("un", "cx"):
             return quantidade.to_integral_value(rounding=ROUND_CEILING)
-        return quantidade.quantize(Decimal("0.001"))
+        return quantidade.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+
+    def _casas_quantidade_reposicao(self, unidade_medida):
+        return 0 if unidade_medida in ("un", "cx") else 1
+
+    def _formatar_quantidade_reposicao(self, quantidade, unidade_medida):
+        casas = self._casas_quantidade_reposicao(unidade_medida)
+        if casas == 0:
+            quantidade_texto = str(int(quantidade))
+        else:
+            quantidade_texto = f"{float(quantidade):.{casas}f}".replace(".", ",")
+
+        return f"{quantidade_texto} {unidade_medida}"
 
     def _percentual(self, valor, total):
         valor = self._decimal(valor)
@@ -1160,7 +1187,8 @@ class DashboardInteligenteService:
 
     def _formatar_dias(self, dias):
         if dias is None:
-            return "sem historico"
+            return "sem histórico"
         if dias <= Decimal("1"):
-            return "ate 1 dia"
-        return f"{self._float(dias, 1)} dias"
+            return "até 1 dia"
+        dias_inteiros = max(int(dias.to_integral_value(rounding=ROUND_HALF_UP)), 1)
+        return "1 dia" if dias_inteiros == 1 else f"{dias_inteiros} dias"

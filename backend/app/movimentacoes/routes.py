@@ -3,7 +3,7 @@ from marshmallow import ValidationError
 
 from ..extensions import db
 from ..models import SubtipoMovimentacao, TipoMovimentacao
-from ..schemas.movimentacao import MovimentacaoCreateSchema
+from ..schemas.movimentacao import MovimentacaoCreateSchema, VendaLoteSchema
 from ..shared.auth import usuario_ativo_required
 from ..shared.errors import DomainError
 from ..shared.http import json_error, load_payload
@@ -18,6 +18,7 @@ from .service import MovimentacaoService
 movimentacoes_bp = Blueprint("movimentacoes", __name__)
 
 _movimentacao_create_schema = MovimentacaoCreateSchema()
+_venda_lote_schema = VendaLoteSchema()
 
 
 @movimentacoes_bp.get("")
@@ -67,3 +68,32 @@ def create_saida():
         return json_error(exc.message, exc.status_code)
 
     return jsonify(serialize_movimentacao_result(resultado)), 201
+
+
+@movimentacoes_bp.post("/venda-lote")
+@usuario_ativo_required
+def create_venda_lote():
+    try:
+        data = load_payload(_venda_lote_schema)
+        data["usuario_id"] = g.usuario_autenticado.id
+        resultados = MovimentacaoService(db.session).registrar_venda_lote(data)
+    except ValidationError as exc:
+        return json_error(exc.messages, 400)
+    except DomainError as exc:
+        return json_error(exc.message, exc.status_code)
+
+    itens = [serialize_movimentacao_result(resultado) for resultado in resultados]
+    receita_total = sum(item["movimentacao"]["receita_total"] or 0 for item in itens)
+    lucro_bruto_total = sum(item["movimentacao"]["lucro_bruto"] or 0 for item in itens)
+
+    return (
+        jsonify(
+            {
+                "itens": itens,
+                "total_itens": len(itens),
+                "receita_total": receita_total,
+                "lucro_bruto_total": lucro_bruto_total,
+            }
+        ),
+        201,
+    )

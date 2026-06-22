@@ -522,73 +522,6 @@
   font-weight: 800;
 }
 
-.chartGrid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(220px, 0.65fr);
-  gap: 16px;
-}
-
-.chartList {
-  display: grid;
-  gap: 9px;
-}
-
-.chartList > strong {
-  font-size: 0.88rem;
-}
-
-.chartRow {
-  display: grid;
-  grid-template-columns: 76px minmax(0, 1fr) 92px;
-  gap: 9px;
-  align-items: center;
-  color: var(--muted);
-  font-size: 0.76rem;
-  font-weight: 800;
-}
-
-.chartRow div {
-  min-height: 10px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: var(--surface-soft);
-}
-
-.chartRow i {
-  display: block;
-  min-width: 2px;
-  height: 10px;
-  border-radius: inherit;
-  background: var(--accent);
-}
-
-.chartRow small {
-  color: var(--text);
-  text-align: right;
-}
-
-.miniStat {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 9px 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #f8fbf9;
-}
-
-.miniStat span {
-  color: var(--muted);
-  font-size: 0.78rem;
-  font-weight: 800;
-  overflow-wrap: anywhere;
-}
-
-.miniStat strong {
-  color: var(--accent-strong);
-}
-
 .metricSkeleton,
 .rowSkeleton {
   border-radius: 8px;
@@ -635,10 +568,6 @@
 
 @media (max-width: 900px) {
   .mainGrid {
-    grid-template-columns: 1fr;
-  }
-
-  .chartGrid {
     grid-template-columns: 1fr;
   }
 }

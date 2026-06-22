@@ -21,7 +21,7 @@ from ..shared.money import quantize_money
 
 
 OPERADOR_PADRAO_EMAIL = "operacao@hortifruti.local"
-OPERADOR_PADRAO_NOME = "Operacao Padrao"
+OPERADOR_PADRAO_NOME = "Operação Padrão"
 OPERADOR_PADRAO_HASH = "auth-nao-configurada"
 
 
@@ -93,6 +93,128 @@ class MovimentacaoService:
             lambda quantidade: -quantidade,
         )
 
+    def registrar_venda_lote(self, data):
+        usuario_id = self._resolve_usuario_id(data.get("usuario_id"))
+        data_movimentacao = data.get("data") or self.today_provider()
+        resultados = []
+
+        try:
+            usuario = self.session.get(Usuario, usuario_id)
+            if usuario is None:
+                self.session.rollback()
+                raise DomainError("Usuário não encontrado.", 404)
+            if not usuario.ativo:
+                self.session.rollback()
+                raise DomainError("Usuário inativo não pode registrar movimentação.", 409)
+
+            for item in data["itens"]:
+                resultado = self._registrar_venda_item_sem_commit(
+                    item,
+                    usuario.id,
+                    data_movimentacao,
+                    data.get("observacao"),
+                )
+                resultados.append(resultado)
+
+            self.session.commit()
+        except (DomainError, ValidationError):
+            self.session.rollback()
+            raise
+        except Exception:
+            self.session.rollback()
+            raise
+
+        return resultados
+
+    def _registrar_venda_item_sem_commit(self, item, usuario_id, data_movimentacao, observacao=None):
+        produto = self._get_produto_for_update(item["produto_id"])
+        if produto is None:
+            raise DomainError("Produto não encontrado.", 404)
+        if not produto.ativo:
+            raise DomainError("Produto inativo não pode receber movimentação.", 409)
+
+        quantidade = item["quantidade"]
+        nova_quantidade = produto.quantidade_atual - quantidade
+        if nova_quantidade < Decimal("0"):
+            raise DomainError("Estoque insuficiente para a saída informada.", 409)
+
+        camadas_saida = self._get_camadas_para_saida(
+            produto.id,
+            data_movimentacao,
+            incluir_vencidas=False,
+        )
+        quantidade_disponivel = sum(
+            (camada.quantidade_disponivel for camada in camadas_saida),
+            Decimal("0"),
+        )
+
+        if quantidade_disponivel < quantidade:
+            raise DomainError(
+                "Estoque disponível insuficiente para a saída informada considerando a validade.",
+                409,
+            )
+
+        produto.quantidade_atual = nova_quantidade
+        movimentacao = Movimentacao(
+            produto_id=produto.id,
+            usuario_id=usuario_id,
+            tipo=TipoMovimentacao.SAIDA,
+            subtipo=SubtipoMovimentacao.VENDA,
+            quantidade=quantidade,
+            data=data_movimentacao,
+            observacao=observacao,
+        )
+        self.session.add(movimentacao)
+        self.session.flush()
+
+        quantidade_restante = quantidade
+        custo_total = Decimal("0")
+        consumos_saida = []
+
+        for camada in camadas_saida:
+            if quantidade_restante <= Decimal("0"):
+                break
+
+            quantidade_consumida = min(camada.quantidade_disponivel, quantidade_restante)
+            custo_total_consumo = quantize_money(quantidade_consumida * camada.custo_unitario)
+
+            camada.quantidade_disponivel -= quantidade_consumida
+            quantidade_restante -= quantidade_consumida
+            custo_total += custo_total_consumo
+
+            consumo = ConsumoSaida(
+                movimentacao_saida_id=movimentacao.id,
+                camada_estoque_id=camada.id,
+                quantidade_consumida=quantidade_consumida,
+                custo_unitario=camada.custo_unitario,
+                custo_total=custo_total_consumo,
+            )
+            self.session.add(consumo)
+            consumos_saida.append(consumo)
+
+        custo_total = quantize_money(custo_total)
+        custo_unitario = quantize_money(custo_total / quantidade)
+        preco_unitario_venda = quantize_money(
+            item["preco_unitario_venda"]
+            if item.get("preco_unitario_venda") is not None
+            else produto.preco_venda_padrao
+        )
+        receita_total = quantize_money(quantidade * preco_unitario_venda)
+        lucro_bruto = quantize_money(receita_total - custo_total)
+
+        movimentacao.custo_unitario = custo_unitario
+        movimentacao.preco_unitario_venda = preco_unitario_venda
+        movimentacao.receita_total = receita_total
+        movimentacao.custo_total = custo_total
+        movimentacao.lucro_bruto = lucro_bruto
+        self.session.flush()
+
+        return MovimentacaoResult(
+            movimentacao=movimentacao,
+            produto=produto,
+            consumos_saida=consumos_saida,
+        )
+
     def _registrar_movimentacao(self, tipo, data, quantidade_delta):
         usuario_id = self._resolve_usuario_id(data.get("usuario_id"))
         data_movimentacao = data.get("data") or self.today_provider()
@@ -101,23 +223,23 @@ class MovimentacaoService:
             produto = self._get_produto_for_update(data["produto_id"])
             if produto is None:
                 self.session.rollback()
-                raise DomainError("Produto nao encontrado.", 404)
+                raise DomainError("Produto não encontrado.", 404)
             if not produto.ativo:
                 self.session.rollback()
-                raise DomainError("Produto inativo nao pode receber movimentacao.", 409)
+                raise DomainError("Produto inativo não pode receber movimentação.", 409)
 
             usuario = self.session.get(Usuario, usuario_id)
             if usuario is None:
                 self.session.rollback()
-                raise DomainError("Usuario nao encontrado.", 404)
+                raise DomainError("Usuário não encontrado.", 404)
             if not usuario.ativo:
                 self.session.rollback()
-                raise DomainError("Usuario inativo nao pode registrar movimentacao.", 409)
+                raise DomainError("Usuário inativo não pode registrar movimentação.", 409)
 
             nova_quantidade = produto.quantidade_atual + quantidade_delta(data["quantidade"])
             if nova_quantidade < Decimal("0"):
                 self.session.rollback()
-                raise DomainError("Estoque insuficiente para a saida informada.", 409)
+                raise DomainError("Estoque insuficiente para a saída informada.", 409)
 
             custo_unitario = None
             custo_total = None
@@ -137,7 +259,7 @@ class MovimentacaoService:
             else:
                 if subtipo is None:
                     self.session.rollback()
-                    raise DomainError("Saida exige subtipo informado.", 400)
+                    raise DomainError("Saída exige subtipo informado.", 400)
 
                 incluir_vencidas = subtipo != SubtipoMovimentacao.VENDA
                 camadas_saida = self._get_camadas_para_saida(
@@ -153,7 +275,7 @@ class MovimentacaoService:
                 if quantidade_disponivel < data["quantidade"]:
                     self.session.rollback()
                     raise DomainError(
-                        "Estoque disponivel insuficiente para a saida informada considerando a validade.",
+                        "Estoque disponível insuficiente para a saída informada considerando a validade.",
                         409,
                     )
 

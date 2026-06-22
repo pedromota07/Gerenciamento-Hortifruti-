@@ -4,7 +4,15 @@ from decimal import Decimal
 import pytest
 
 from app.extensions import db
-from app.models import CamadaEstoque, ConsumoSaida, Movimentacao, Produto, Usuario
+from app.models import (
+    CamadaEstoque,
+    ConsumoSaida,
+    Movimentacao,
+    Produto,
+    SubtipoMovimentacao,
+    TipoMovimentacao,
+    Usuario,
+)
 
 
 def post_json(client, url, payload, headers=None):
@@ -90,6 +98,19 @@ def registrar_saida(client, headers, produto_id, quantidade, subtipo, data_saida
     return post_json(client, "/api/movimentacoes/saida", payload, headers=headers)
 
 
+def registrar_venda_lote(client, headers, itens, data_venda, observacao="venda em lote teste"):
+    return post_json(
+        client,
+        "/api/movimentacoes/venda-lote",
+        {
+            "data": data_venda.isoformat(),
+            "itens": itens,
+            "observacao": observacao,
+        },
+        headers=headers,
+    )
+
+
 def test_health_check(client):
     response = client.get("/api/health")
 
@@ -113,7 +134,7 @@ def test_login_valido_e_invalido(client):
     assert valido.get_json()["usuario"]["perfil"] == "gerente"
     assert "token" in valido.get_json()
     assert invalido.status_code == 401
-    assert invalido.get_json()["error"] == "Credenciais invalidas."
+    assert invalido.get_json()["error"] == "Credenciais inválidas."
 
 
 def test_rotas_exigem_jwt_e_gestao_de_usuarios_exige_gerente(client):
@@ -129,7 +150,7 @@ def test_rotas_exigem_jwt_e_gestao_de_usuarios_exige_gerente(client):
     assert sem_token.status_code == 401
     assert produtos_autenticado.status_code == 200
     assert usuarios_funcionario.status_code == 403
-    assert usuarios_funcionario.get_json()["error"] == "Acesso restrito a usuarios gerentes."
+    assert usuarios_funcionario.get_json()["error"] == "Acesso restrito a usuários gerentes."
     assert usuarios_gerente.status_code == 200
 
 
@@ -186,10 +207,10 @@ def test_usuarios_e_produtos_bloqueiam_duplicados(client):
         headers=headers,
     )
 
-    assert usuario_duplicado.get_json()["error"] == "Ja existe usuario com o mesmo email."
+    assert usuario_duplicado.get_json()["error"] == "Já existe usuário com o mesmo email."
     assert usuario_duplicado.status_code == 409
     assert produto_duplicado.status_code == 409
-    assert produto_duplicado.get_json()["error"] == "Ja existe produto com o mesmo nome e categoria."
+    assert produto_duplicado.get_json()["error"] == "Já existe produto com o mesmo nome e categoria."
 
 
 def test_fluxo_estoque_venda_fefo_perda_e_relatorios(client, app):
@@ -285,6 +306,102 @@ def test_fluxo_estoque_venda_fefo_perda_e_relatorios(client, app):
     assert mais_vendidos[0]["total_vendido"] == pytest.approx(5.0)
     assert validade["total_em_risco_custo"] == pytest.approx(102.0)
     assert len(historico) == 4
+
+
+def test_venda_lote_registra_multiplos_produtos_em_uma_confirmacao(client, app):
+    hoje = date.today()
+    headers = autenticar(client)
+    banana = criar_produto(client, headers, nome="Banana Lote", estoque_minimo="1.000", preco_venda="7.00")
+    maca = criar_produto(client, headers, nome="Maca Lote", estoque_minimo="1.000", preco_venda="9.00")
+
+    assert registrar_entrada(client, headers, banana["id"], "5.000", "3.00", hoje).status_code == 201
+    assert registrar_entrada(client, headers, maca["id"], "2.000", "4.00", hoje).status_code == 201
+
+    resposta = registrar_venda_lote(
+        client,
+        headers,
+        [
+            {"produto_id": banana["id"], "quantidade": "2.000", "preco_unitario_venda": "7.50"},
+            {"produto_id": maca["id"], "quantidade": "0.500", "preco_unitario_venda": "9.00"},
+        ],
+        hoje,
+    )
+    dados = resposta.get_json()
+
+    assert resposta.status_code == 201
+    assert dados["total_itens"] == 2
+    assert dados["receita_total"] == pytest.approx(19.5)
+    assert len(dados["itens"]) == 2
+
+    with app.app_context():
+        vendas = (
+            Movimentacao.query.filter(
+                Movimentacao.tipo == TipoMovimentacao.SAIDA,
+                Movimentacao.subtipo == SubtipoMovimentacao.VENDA,
+            )
+            .order_by(Movimentacao.id.asc())
+            .all()
+        )
+        banana_db = db.session.get(Produto, banana["id"])
+        maca_db = db.session.get(Produto, maca["id"])
+
+        assert len(vendas) == 2
+        assert banana_db.quantidade_atual == Decimal("3.000")
+        assert maca_db.quantidade_atual == Decimal("1.500")
+
+
+def test_venda_lote_falha_sem_gravar_nenhum_item(client, app):
+    hoje = date.today()
+    headers = autenticar(client)
+    banana = criar_produto(client, headers, nome="Banana Lote Rollback", estoque_minimo="1.000", preco_venda="7.00")
+    maca = criar_produto(client, headers, nome="Maca Lote Rollback", estoque_minimo="1.000", preco_venda="9.00")
+
+    assert registrar_entrada(client, headers, banana["id"], "5.000", "3.00", hoje).status_code == 201
+    assert registrar_entrada(client, headers, maca["id"], "1.000", "4.00", hoje).status_code == 201
+
+    resposta = registrar_venda_lote(
+        client,
+        headers,
+        [
+            {"produto_id": banana["id"], "quantidade": "2.000", "preco_unitario_venda": "7.50"},
+            {"produto_id": maca["id"], "quantidade": "3.000", "preco_unitario_venda": "9.00"},
+        ],
+        hoje,
+    )
+
+    assert resposta.status_code == 409
+
+    with app.app_context():
+        vendas = Movimentacao.query.filter(
+            Movimentacao.tipo == TipoMovimentacao.SAIDA,
+            Movimentacao.subtipo == SubtipoMovimentacao.VENDA,
+        ).count()
+        banana_db = db.session.get(Produto, banana["id"])
+        maca_db = db.session.get(Produto, maca["id"])
+
+        assert vendas == 0
+        assert banana_db.quantidade_atual == Decimal("5.000")
+        assert maca_db.quantidade_atual == Decimal("1.000")
+
+
+def test_venda_lote_exige_jwt_e_valida_payload(client):
+    hoje = date.today()
+    headers = autenticar(client)
+
+    sem_token = client.post("/api/movimentacoes/venda-lote", json={"itens": []})
+    payload_vazio = registrar_venda_lote(client, headers, [], hoje)
+    sem_produto = registrar_venda_lote(client, headers, [{"quantidade": "1.000"}], hoje)
+    quantidade_invalida = registrar_venda_lote(
+        client,
+        headers,
+        [{"produto_id": 1, "quantidade": "0.000"}],
+        hoje,
+    )
+
+    assert sem_token.status_code == 401
+    assert payload_vazio.status_code == 400
+    assert sem_produto.status_code == 400
+    assert quantidade_invalida.status_code == 400
 
 
 def test_dashboard_inteligente_retorna_prioridades_e_resumo_executivo(client):
@@ -448,6 +565,27 @@ def test_dashboard_inteligente_retorna_prioridades_e_resumo_executivo(client):
     )
 
 
+def test_dashboard_inteligente_retorna_todas_prioridades_mesmo_com_limite_baixo(client):
+    headers = autenticar(client)
+
+    for indice in range(12):
+        criar_produto(
+            client,
+            headers,
+            nome=f"Produto Alerta Dashboard {indice}",
+            estoque_minimo="1.000",
+            validade_dias=10,
+        )
+
+    resposta = client.get("/api/relatorios/dashboard-inteligente?limite=1", headers=headers)
+    dados = resposta.get_json()
+
+    assert resposta.status_code == 200
+    assert len(dados["prioridades_hoje"]) >= 12
+    assert len(dados["prioridades_hoje"]) == dados["kpis"]["alertas_total"]
+    assert dados["kpis"]["alertas_total"] == dados["kpis"]["total_alertas"]
+
+
 def test_dashboard_inteligente_exige_jwt_e_valida_parametros(client):
     headers = autenticar(client)
     sem_token = client.get("/api/relatorios/dashboard-inteligente")
@@ -493,9 +631,9 @@ def test_saidas_invalidas_nao_gravam_movimentacao(client, app):
         total_movimentacoes = Movimentacao.query.count()
 
     assert estoque_insuficiente.status_code == 409
-    assert estoque_insuficiente.get_json()["error"] == "Estoque insuficiente para a saida informada."
+    assert estoque_insuficiente.get_json()["error"] == "Estoque insuficiente para a saída informada."
     assert produto_inativo.status_code == 409
-    assert produto_inativo.get_json()["error"] == "Produto inativo nao pode receber movimentacao."
+    assert produto_inativo.get_json()["error"] == "Produto inativo não pode receber movimentação."
     assert total_movimentacoes == 1
 
 
@@ -524,4 +662,4 @@ def test_venda_nao_consome_camadas_vencidas(client):
 
     assert entrada.status_code == 201
     assert venda.status_code == 409
-    assert venda.get_json()["error"] == "Estoque disponivel insuficiente para a saida informada considerando a validade."
+    assert venda.get_json()["error"] == "Estoque disponível insuficiente para a saída informada considerando a validade."
