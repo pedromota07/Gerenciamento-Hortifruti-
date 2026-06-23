@@ -21,6 +21,12 @@ const ROTULOS_UNIDADE = {
   un: "un",
   cx: "cx"
 };
+const PILARES_SAUDE = [
+  { chave: "validade", rotulo: "Validade" },
+  { chave: "estoque", rotulo: "Estoque" },
+  { chave: "financeiro", rotulo: "Financeiro" },
+  { chave: "giro", rotulo: "Giro" }
+];
 
 function formatarDataIso(data) {
   const ano = data.getFullYear();
@@ -63,6 +69,52 @@ function obterPeriodoRapido(tipo) {
 
 function formatarPercentual(valor) {
   return `${formatarQuantidade(valor)}%`;
+}
+
+function formatarNumeroComSinal(valor, casas = 1) {
+  const numero = Number(valor ?? 0);
+  const prefixo = numero > 0 ? "+" : "";
+
+  return `${prefixo}${numero.toLocaleString("pt-BR", {
+    minimumFractionDigits: casas,
+    maximumFractionDigits: casas
+  })}`;
+}
+
+function formatarMoedaComSinal(valor) {
+  const numero = Number(valor ?? 0);
+  const prefixo = numero > 0 ? "+" : numero < 0 ? "-" : "";
+  const moeda = formatarMoeda(Math.abs(numero));
+
+  return `${prefixo}${moeda}`;
+}
+
+function formatarComparativo(indicador, tipo = "percentual") {
+  if (!indicador) {
+    return null;
+  }
+
+  if (tipo === "pontos") {
+    return `${formatarNumeroComSinal(indicador.variacao_pontos_percentuais)} p.p. vs período anterior`;
+  }
+
+  if (indicador.variacao_percentual === null || indicador.variacao_percentual === undefined) {
+    if (tipo === "moeda" && Number(indicador.variacao_absoluta ?? 0) !== 0) {
+      return `${formatarMoedaComSinal(indicador.variacao_absoluta)} vs período anterior`;
+    }
+
+    return "sem base anterior relevante";
+  }
+
+  return `${formatarNumeroComSinal(indicador.variacao_percentual)}% vs período anterior`;
+}
+
+function formatarPeriodoAnterior(periodo) {
+  if (!periodo?.data_inicial || !periodo?.data_final) {
+    return null;
+  }
+
+  return `${formatarData(periodo.data_inicial)} a ${formatarData(periodo.data_final)}`;
 }
 
 function formatarGiroMedio(valor, unidadeMedida) {
@@ -136,8 +188,36 @@ function obterClassePrioridade(prioridade) {
   }[prioridade] ?? styles.prioridadeBaixa;
 }
 
-function obterDestinoAcao() {
-  return "/estoque";
+function formatarScoreSaude(valor) {
+  return Number(valor ?? 0).toLocaleString("pt-BR", {
+    maximumFractionDigits: 0
+  });
+}
+
+function obterClassePilarSaude(score) {
+  const valor = Number(score ?? 0);
+
+  if (valor >= 80) {
+    return styles.healthPillarHealthy;
+  }
+
+  if (valor >= 50) {
+    return styles.healthPillarWarning;
+  }
+
+  return styles.healthPillarDanger;
+}
+
+function obterClasseComparativo(impacto) {
+  return {
+    positivo: styles.metricComparisonPositive,
+    negativo: styles.metricComparisonNegative,
+    neutro: styles.metricComparisonNeutral
+  }[impacto] ?? styles.metricComparisonNeutral;
+}
+
+function obterDestinoAcao(item) {
+  return item?.produto_id ? `/produtos/${item.produto_id}` : "/estoque";
 }
 
 function SecaoVazia({ icone, titulo, descricao }) {
@@ -145,13 +225,14 @@ function SecaoVazia({ icone, titulo, descricao }) {
 }
 
 export default function PaginaPainel() {
+  const filtrosIniciais = useMemo(obterPeriodoInicial, []);
   const [dashboard, setDashboard] = useState(null);
-  const [filtros, setFiltros] = useState(obterPeriodoInicial);
+  const [filtros, setFiltros] = useState(filtrosIniciais);
   const [carregando, setCarregando] = useState(true);
   const [mensagem, setMensagem] = useState(null);
   const [paginaPrioridades, setPaginaPrioridades] = useState(0);
 
-  const carregarPainel = useCallback(async (proximosFiltros = filtros) => {
+  const carregarPainel = useCallback(async (proximosFiltros) => {
     setCarregando(true);
     setMensagem(null);
     setPaginaPrioridades(0);
@@ -164,11 +245,11 @@ export default function PaginaPainel() {
     } finally {
       setCarregando(false);
     }
-  }, [filtros]);
+  }, []);
 
   useEffect(() => {
-    carregarPainel(filtros);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    carregarPainel(filtrosIniciais);
+  }, [carregarPainel, filtrosIniciais]);
 
   function atualizarFiltro(campo, valor) {
     setFiltros((filtrosAtuais) => ({
@@ -185,6 +266,13 @@ export default function PaginaPainel() {
 
   const kpis = dashboard?.kpis ?? {};
   const saude = dashboard?.saude_operacional ?? {};
+  const comparativoPeriodo = dashboard?.comparativo_periodo ?? {};
+  const indicadoresComparativo = comparativoPeriodo.indicadores ?? {};
+  const periodoAnteriorTexto = formatarPeriodoAnterior(comparativoPeriodo.periodo_anterior);
+  const pilaresSaude = PILARES_SAUDE.map((pilar) => ({
+    ...pilar,
+    dados: saude.pilares?.[pilar.chave]
+  })).filter((pilar) => pilar.dados);
   const resumoExecutivo = dashboard?.resumo_executivo ?? [];
   const prioridades = dashboard?.prioridades_hoje ?? [];
   const sugestoesReposicao = dashboard?.sugestoes_reposicao ?? [];
@@ -206,6 +294,8 @@ export default function PaginaPainel() {
         rotulo: "Receita",
         valor: formatarMoeda(kpis.receita_total),
         detalhe: "Período analisado",
+        comparativo: formatarComparativo(indicadoresComparativo.receita_total, "moeda"),
+        comparativoClasse: obterClasseComparativo(indicadoresComparativo.receita_total?.impacto),
         icone: "pi pi-wallet",
         tom: "primary"
       },
@@ -213,6 +303,8 @@ export default function PaginaPainel() {
         rotulo: "Lucro bruto",
         valor: formatarMoeda(kpis.lucro_bruto_total),
         detalhe: "Resultado antes das despesas",
+        comparativo: formatarComparativo(indicadoresComparativo.lucro_bruto_total, "moeda"),
+        comparativoClasse: obterClasseComparativo(indicadoresComparativo.lucro_bruto_total?.impacto),
         icone: "pi pi-chart-line",
         tom: "healthy"
       },
@@ -220,6 +312,8 @@ export default function PaginaPainel() {
         rotulo: "Margem",
         valor: formatarPercentual(kpis.margem_lucro_percentual),
         detalhe: "Lucro sobre receita",
+        comparativo: formatarComparativo(indicadoresComparativo.margem_lucro_percentual, "pontos"),
+        comparativoClasse: obterClasseComparativo(indicadoresComparativo.margem_lucro_percentual?.impacto),
         icone: "pi pi-percentage",
         tom: "neutral"
       },
@@ -234,6 +328,8 @@ export default function PaginaPainel() {
         rotulo: "Perdas",
         valor: formatarMoeda(kpis.perdas_total_custo),
         detalhe: "Custo no período",
+        comparativo: formatarComparativo(indicadoresComparativo.perdas_total_custo, "moeda"),
+        comparativoClasse: obterClasseComparativo(indicadoresComparativo.perdas_total_custo?.impacto),
         icone: "pi pi-arrow-down-right",
         tom: "danger"
       },
@@ -245,16 +341,16 @@ export default function PaginaPainel() {
         tom: (kpis.alertas_criticos ?? 0) > 0 ? "warning" : "healthy"
       }
     ],
-    [kpis]
+    [indicadoresComparativo, kpis]
   );
 
   return (
     <section className={styles.page}>
       <header className={styles.header}>
         <div>
-          <span className={styles.eyebrow}>Regras + decisão</span>
+          <span className={styles.eyebrow}>Gestão do dia</span>
           <h1>Dashboard Orientado à Decisão</h1>
-          <p>Prioridades, riscos e recomendações automáticas da operação.</p>
+          <p>Prioridades, riscos e recomendações para a rotina da operação.</p>
         </div>
 
         <div className={styles.headerActions}>
@@ -345,6 +441,22 @@ export default function PaginaPainel() {
                 {kpis.alertas_criticos ?? 0} alerta(s) crítico(s), {kpis.produtos_vencidos ?? 0} produto(s)
                 vencido(s), {kpis.produtos_estoque_baixo ?? 0} produto(s) com estoque baixo.
               </p>
+              {pilaresSaude.length > 0 ? (
+                <div className={styles.healthPillars} aria-label="Pilares da saúde operacional">
+                  {pilaresSaude.map((pilar) => (
+                    <article
+                      className={`${styles.healthPillar} ${obterClassePilarSaude(pilar.dados.score)}`}
+                      key={pilar.chave}
+                    >
+                      <div>
+                        <span>{pilar.rotulo}</span>
+                        <strong>{formatarScoreSaude(pilar.dados.score)}</strong>
+                      </div>
+                      <i style={{ width: `${Math.max(Number(pilar.dados.score ?? 0), 0)}%` }} />
+                    </article>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </>
         )}
@@ -361,16 +473,25 @@ export default function PaginaPainel() {
                 </div>
                 <strong>{indicador.valor}</strong>
                 <small>{indicador.detalhe}</small>
+                {indicador.comparativo ? (
+                  <small className={`${styles.metricComparison} ${indicador.comparativoClasse}`}>
+                    {indicador.comparativo}
+                  </small>
+                ) : null}
               </article>
             ))}
       </section>
+
+      {!carregando && periodoAnteriorTexto ? (
+        <p className={styles.comparisonPeriod}>Comparado com o período anterior: {periodoAnteriorTexto}</p>
+      ) : null}
 
       <section className={styles.executivePanel}>
         <div className={styles.panelHeader}>
           <div>
             <span className={styles.eyebrow}>Resumo executivo</span>
             <h2>O que o gerente precisa fazer hoje</h2>
-            <p>Frases geradas pelo backend a partir de estoque, giro, margem, perdas e validade.</p>
+            <p>Resumo calculado a partir de estoque, giro, margem, perdas e validade.</p>
           </div>
         </div>
 
@@ -423,7 +544,12 @@ export default function PaginaPainel() {
             <>
               <div className={styles.decisionList}>
                 {prioridadesVisiveis.map((item, indice) => (
-                  <article className={styles.decisionItem} key={`${item.tipo}-${item.produto_id}-${indice}`}>
+                  <Link
+                    className={styles.decisionItem}
+                    href={obterDestinoAcao(item)}
+                    key={`${item.tipo}-${item.produto_id}-${indice}`}
+                    aria-label={`Abrir ${item.produto_nome}`}
+                  >
                     <ProdutoVisual nome={item.produto_nome} categoria={item.metricas?.categoria} />
                     <div className={styles.decisionContent}>
                       <div>
@@ -437,10 +563,10 @@ export default function PaginaPainel() {
                       <small><b>Ação:</b> {item.acao_sugerida}</small>
                       <small><b>Impacto:</b> {item.impacto_estimado}</small>
                     </div>
-                    <Link className={styles.rowAction} href={obterDestinoAcao()} aria-label={`Abrir ${item.produto_nome}`}>
+                    <span className={styles.rowAction} aria-hidden="true">
                       <i className="pi pi-arrow-right" aria-hidden="true" />
-                    </Link>
-                  </article>
+                    </span>
+                  </Link>
                 ))}
               </div>
 
@@ -477,7 +603,7 @@ export default function PaginaPainel() {
         <section className={styles.recommendationPanel}>
           <div className={styles.panelHeader}>
             <div>
-              <span className={styles.eyebrow}>Reposição inteligente</span>
+              <span className={styles.eyebrow}>Reposição recomendada</span>
               <h2>Comprar com prioridade</h2>
               <p>Sugestão baseada em média diária, estoque vendável e cobertura desejada.</p>
             </div>
@@ -496,7 +622,12 @@ export default function PaginaPainel() {
           ) : (
             <div className={styles.repositionList}>
               {sugestoesReposicao.slice(0, LIMITE_LISTA).map((produto) => (
-                <article className={styles.repositionItem} key={produto.produto_id}>
+                <Link
+                  aria-label={`Abrir detalhes de ${produto.produto_nome}`}
+                  className={styles.repositionItem}
+                  href={`/produtos/${produto.produto_id}`}
+                  key={produto.produto_id}
+                >
                   <div>
                     <strong>{produto.produto_nome}</strong>
                     <span className={`${styles.priorityTag} ${obterClassePrioridade(produto.prioridade)}`}>
@@ -507,7 +638,7 @@ export default function PaginaPainel() {
                   <small>Média: {formatarGiroMedio(produto.media_venda_diaria, produto.unidade_medida)}/dia</small>
                   <small>Cobertura: {formatarCobertura(produto.dias_cobertura)}</small>
                   <small>{montarJustificativaReposicao(produto, diasPrevisao)}</small>
-                </article>
+                </Link>
               ))}
             </div>
           )}

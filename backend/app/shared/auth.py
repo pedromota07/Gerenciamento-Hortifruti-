@@ -24,7 +24,7 @@ def usuario_ativo_required(view):
     def wrapped(*args, **kwargs):
         usuario = _carregar_usuario_autenticado()
         if usuario is None or not usuario.ativo:
-            return json_error("Usuario autenticado invalido ou inativo.", 401)
+            return json_error("Usuário autenticado inválido ou inativo.", 401)
 
         g.usuario_autenticado = usuario
         return view(*args, **kwargs)
@@ -37,9 +37,9 @@ def gerente_required(view):
     def wrapped(*args, **kwargs):
         usuario = _carregar_usuario_autenticado()
         if usuario is None or not usuario.ativo:
-            return json_error("Usuario autenticado invalido ou inativo.", 401)
+            return json_error("Usuário autenticado inválido ou inativo.", 401)
         if usuario.perfil != PerfilUsuario.GERENTE:
-            return json_error("Acesso restrito a usuarios gerentes.", 403)
+            return json_error("Acesso restrito a usuários gerentes.", 403)
 
         g.usuario_autenticado = usuario
         return view(*args, **kwargs)

@@ -9,10 +9,10 @@ class AuthService:
         usuario = Usuario.query.filter_by(email=email).first()
 
         if usuario is None or not usuario.ativo:
-            raise DomainError("Credenciais invalidas.", 401)
+            raise DomainError("Credenciais inválidas.", 401)
 
         senha_valida = bcrypt.checkpw(senha.encode("utf-8"), usuario.senha_hash.encode("utf-8"))
         if not senha_valida:
-            raise DomainError("Credenciais invalidas.", 401)
+            raise DomainError("Credenciais inválidas.", 401)
 
         return usuario

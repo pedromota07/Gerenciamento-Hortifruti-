@@ -452,6 +452,29 @@ def test_dashboard_inteligente_retorna_prioridades_e_resumo_executivo(client):
         validade_dias=60,
     )
 
+    entrada_anterior = hoje - timedelta(days=13)
+    movimento_anterior = hoje - timedelta(days=8)
+
+    assert registrar_entrada(client, headers, produto_ruptura["id"], "5.000", "2.00", entrada_anterior).status_code == 201
+    assert registrar_saida(
+        client,
+        headers,
+        produto_ruptura["id"],
+        "5.000",
+        "venda",
+        movimento_anterior,
+        preco="8.00",
+    ).status_code == 201
+    assert registrar_entrada(client, headers, produto_perda["id"], "2.000", "3.00", entrada_anterior).status_code == 201
+    assert registrar_saida(
+        client,
+        headers,
+        produto_perda["id"],
+        "2.000",
+        "perda",
+        movimento_anterior,
+    ).status_code == 201
+
     assert registrar_entrada(client, headers, produto_estoque_baixo["id"], "3.000", "4.00", hoje).status_code == 201
     assert registrar_entrada(client, headers, produto_ruptura["id"], "9.000", "3.00", hoje).status_code == 201
     assert registrar_entrada(client, headers, produto_margem_baixa["id"], "5.000", "9.50", hoje).status_code == 201
@@ -524,10 +547,20 @@ def test_dashboard_inteligente_retorna_prioridades_e_resumo_executivo(client):
         "analise_perdas",
         "mais_vendidos",
         "series_graficos",
+        "comparativo_periodo",
     }
     assert dados["saude_operacional"]["score"] >= 0
     assert dados["saude_operacional"]["score"] <= 100
+    assert dados["saude_operacional"]["score"] > 0
     assert dados["saude_operacional"]["classificacao"] in {"critica", "atencao", "saudavel"}
+    pilares_saude = dados["saude_operacional"]["pilares"]
+    assert set(pilares_saude) == {"validade", "estoque", "financeiro", "giro"}
+    for pilar in pilares_saude.values():
+        assert 0 <= pilar["score"] <= 100
+        assert pilar["peso"] > 0
+        assert pilar["fatores"]
+    assert pilares_saude["estoque"]["fatores"]["rupturas_previstas"] >= 1
+    assert pilares_saude["estoque"]["score"] <= 75
     assert dados["kpis"]["receita_total"] == pytest.approx(84.0)
     assert dados["kpis"]["lucro_bruto_total"] == pytest.approx(41.0)
     assert dados["kpis"]["perdas_total_custo"] == pytest.approx(8.0)
@@ -536,6 +569,40 @@ def test_dashboard_inteligente_retorna_prioridades_e_resumo_executivo(client):
     assert dados["kpis"]["alertas_total"] >= 6
     assert dados["kpis"]["alertas_criticos"] >= 2
     assert "Banana Dashboard" == dados["mais_vendidos"][0]["produto_nome"]
+
+    comparativo = dados["comparativo_periodo"]
+    assert comparativo["periodo_anterior"] == {
+        "data_inicial": (hoje - timedelta(days=13)).isoformat(),
+        "data_final": (hoje - timedelta(days=7)).isoformat(),
+        "dias_periodo": 7,
+    }
+    indicadores_comparativo = comparativo["indicadores"]
+    assert set(indicadores_comparativo) == {
+        "receita_total",
+        "lucro_bruto_total",
+        "margem_lucro_percentual",
+        "perdas_total_custo",
+    }
+    assert indicadores_comparativo["receita_total"]["atual"] == pytest.approx(84.0)
+    assert indicadores_comparativo["receita_total"]["anterior"] == pytest.approx(40.0)
+    assert indicadores_comparativo["receita_total"]["variacao_absoluta"] == pytest.approx(44.0)
+    assert indicadores_comparativo["receita_total"]["variacao_percentual"] == pytest.approx(110.0)
+    assert indicadores_comparativo["receita_total"]["base_relevante"] is True
+    assert indicadores_comparativo["receita_total"]["impacto"] == "positivo"
+    assert indicadores_comparativo["lucro_bruto_total"]["atual"] == pytest.approx(41.0)
+    assert indicadores_comparativo["lucro_bruto_total"]["anterior"] == pytest.approx(30.0)
+    assert indicadores_comparativo["lucro_bruto_total"]["base_relevante"] is True
+    assert indicadores_comparativo["lucro_bruto_total"]["impacto"] == "positivo"
+    assert indicadores_comparativo["margem_lucro_percentual"]["atual"] == pytest.approx(48.81)
+    assert indicadores_comparativo["margem_lucro_percentual"]["anterior"] == pytest.approx(75.0)
+    assert indicadores_comparativo["margem_lucro_percentual"]["variacao_pontos_percentuais"] == pytest.approx(-26.19)
+    assert indicadores_comparativo["margem_lucro_percentual"]["impacto"] == "negativo"
+    assert indicadores_comparativo["perdas_total_custo"]["atual"] == pytest.approx(8.0)
+    assert indicadores_comparativo["perdas_total_custo"]["anterior"] == pytest.approx(6.0)
+    assert indicadores_comparativo["perdas_total_custo"]["variacao_absoluta"] == pytest.approx(2.0)
+    assert indicadores_comparativo["perdas_total_custo"]["variacao_percentual"] is None
+    assert indicadores_comparativo["perdas_total_custo"]["base_relevante"] is False
+    assert indicadores_comparativo["perdas_total_custo"]["impacto"] == "negativo"
 
     prioridades = {(alerta["tipo"], alerta["produto_nome"]): alerta for alerta in dados["prioridades_hoje"]}
     assert prioridades[("validade_vencida", "Alface Dashboard")]["prioridade"] == "critica"
@@ -602,8 +669,15 @@ def test_dashboard_inteligente_exige_jwt_e_valida_parametros(client):
     assert limite_invalido.status_code == 400
     assert periodo_invalido.status_code == 400
     assert vazio.status_code == 200
-    assert vazio.get_json()["saude_operacional"]["score"] == 100
-    assert vazio.get_json()["prioridades_hoje"] == []
+    dados_vazio = vazio.get_json()
+    assert dados_vazio["saude_operacional"]["score"] == 100
+    assert dados_vazio["prioridades_hoje"] == []
+    receita_comparativa = dados_vazio["comparativo_periodo"]["indicadores"]["receita_total"]
+    assert receita_comparativa["atual"] == 0
+    assert receita_comparativa["anterior"] == 0
+    assert receita_comparativa["variacao_percentual"] is None
+    assert receita_comparativa["base_relevante"] is False
+    assert receita_comparativa["impacto"] == "neutro"
 
 
 def test_saidas_invalidas_nao_gravam_movimentacao(client, app):

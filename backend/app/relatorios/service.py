@@ -225,6 +225,8 @@ class RelatorioService:
 class DashboardInteligenteService:
     PRIORIDADE_ORDEM = {"critica": 0, "alta": 1, "media": 2, "baixa": 3}
     MARGEM_BAIXA_PERCENTUAL = Decimal("20")
+    BASE_MINIMA_PERCENTUAL_MONETARIO = Decimal("10")
+    VARIACAO_PERCENTUAL_MAXIMA_EXIBICAO = Decimal("999")
 
     def __init__(self, session, today_provider=date.today):
         self.session = session
@@ -253,11 +255,21 @@ class DashboardInteligenteService:
         lucro_bruto_total = self._decimal(financeiro["lucro_bruto_total"])
         perdas_total_custo = self._decimal(financeiro["perdas_total_custo"])
         margem_geral = self._percentual(lucro_bruto_total, receita_total)
+        comparativo_periodo = self._montar_comparativo_periodo(
+            relatorios,
+            data_inicial,
+            dias_periodo,
+            receita_total,
+            lucro_bruto_total,
+            perdas_total_custo,
+            margem_geral,
+        )
         perdas_relevantes = perdas_total_custo > Decimal("0") and (
             lucro_bruto_total <= Decimal("0")
             or perdas_total_custo / lucro_bruto_total >= Decimal("0.15")
         )
-        sugestoes_reposicao = self._montar_sugestoes_reposicao(analises_produtos, dias_previsao, limite)
+        sugestoes_reposicao_completas = self._montar_sugestoes_reposicao(analises_produtos, dias_previsao, None)
+        sugestoes_reposicao = sugestoes_reposicao_completas if limite is None else sugestoes_reposicao_completas[:limite]
         prioridades = self._montar_prioridades(
             analises_produtos,
             risco_validade_completo,
@@ -276,6 +288,7 @@ class DashboardInteligenteService:
             perdas_total_custo,
             lucro_bruto_total,
             margem_geral,
+            sugestoes_reposicao_completas,
         )
 
         kpis = {
@@ -304,6 +317,7 @@ class DashboardInteligenteService:
             },
             "saude_operacional": saude_operacional,
             "kpis": kpis,
+            "comparativo_periodo": comparativo_periodo,
             "resumo_executivo": self._montar_resumo_executivo(
                 prioridades,
                 sugestoes_reposicao,
@@ -345,6 +359,80 @@ class DashboardInteligenteService:
             data_final = hoje
 
         return data_inicial, data_final
+
+    def _montar_comparativo_periodo(
+        self,
+        relatorios,
+        data_inicial,
+        dias_periodo,
+        receita_total,
+        lucro_bruto_total,
+        perdas_total_custo,
+        margem_geral,
+    ):
+        data_final_anterior = data_inicial - timedelta(days=1)
+        data_inicial_anterior = data_final_anterior - timedelta(days=dias_periodo - 1)
+        financeiro_anterior = relatorios.financeiro(data_inicial_anterior, data_final_anterior)
+        receita_anterior = self._decimal(financeiro_anterior["receita_total"])
+        lucro_anterior = self._decimal(financeiro_anterior["lucro_bruto_total"])
+        perdas_anterior = self._decimal(financeiro_anterior["perdas_total_custo"])
+        margem_anterior = self._percentual(lucro_anterior, receita_anterior)
+
+        return {
+            "periodo_anterior": {
+                "data_inicial": data_inicial_anterior.isoformat(),
+                "data_final": data_final_anterior.isoformat(),
+                "dias_periodo": dias_periodo,
+            },
+            "indicadores": {
+                "receita_total": self._comparar_valor_historico(receita_total, receita_anterior, maior_melhor=True),
+                "lucro_bruto_total": self._comparar_valor_historico(lucro_bruto_total, lucro_anterior, maior_melhor=True),
+                "margem_lucro_percentual": self._comparar_margem_historica(margem_geral, margem_anterior),
+                "perdas_total_custo": self._comparar_valor_historico(perdas_total_custo, perdas_anterior, maior_melhor=False),
+            },
+        }
+
+    def _comparar_valor_historico(self, atual, anterior, maior_melhor):
+        atual = self._decimal(atual)
+        anterior = self._decimal(anterior)
+        variacao = atual - anterior
+        variacao_percentual = None if anterior == Decimal("0") else variacao / anterior * Decimal("100")
+        base_relevante = (
+            anterior >= self.BASE_MINIMA_PERCENTUAL_MONETARIO
+            and (
+                variacao_percentual is None
+                or abs(variacao_percentual) <= self.VARIACAO_PERCENTUAL_MAXIMA_EXIBICAO
+            )
+        )
+
+        return {
+            "atual": self._float(atual, 2),
+            "anterior": self._float(anterior, 2),
+            "variacao_absoluta": self._float(variacao, 2),
+            "variacao_percentual": self._float(variacao_percentual, 2) if base_relevante else None,
+            "base_relevante": base_relevante,
+            "impacto": self._classificar_impacto_variacao(variacao, maior_melhor),
+        }
+
+    def _comparar_margem_historica(self, atual, anterior):
+        atual = self._decimal(atual)
+        anterior = self._decimal(anterior)
+        variacao = atual - anterior
+
+        return {
+            "atual": self._float(atual, 2),
+            "anterior": self._float(anterior, 2),
+            "variacao_pontos_percentuais": self._float(variacao, 2),
+            "impacto": self._classificar_impacto_variacao(variacao, maior_melhor=True),
+        }
+
+    def _classificar_impacto_variacao(self, variacao, maior_melhor):
+        variacao = self._decimal(variacao)
+        if variacao == Decimal("0"):
+            return "neutro"
+
+        melhorou = variacao > Decimal("0") if maior_melhor else variacao < Decimal("0")
+        return "positivo" if melhorou else "negativo"
 
     def _vendas_por_produto(self, data_inicial, data_final):
         statement = (
@@ -923,55 +1011,181 @@ class DashboardInteligenteService:
         perdas_total_custo,
         lucro_bruto_total,
         margem_geral,
+        sugestoes_reposicao,
     ):
         vencidos = len(risco_validade["vencidos"])
         proximos = len(risco_validade["proximos_vencimento"])
         estoque_baixo = sum(1 for produto in analises_produtos if produto["estoque_baixo"])
         rupturas = sum(1 for produto in analises_produtos if produto["dias_cobertura"] is not None and produto["dias_cobertura"] <= Decimal("1"))
         parados_relevantes = sum(1 for produto in produtos_parados if produto["valor_parado_custo"] >= 50)
+        compras_prioritarias = len(sugestoes_reposicao)
         perdas_relevantes = perdas_total_custo > Decimal("0") and (
             lucro_bruto_total <= Decimal("0")
             or perdas_total_custo / lucro_bruto_total >= Decimal("0.15")
         )
         houve_vendas = any(produto["quantidade_vendida_periodo"] > Decimal("0") for produto in analises_produtos)
         margem_baixa = houve_vendas and margem_geral < self.MARGEM_BAIXA_PERCENTUAL
+        valor_estoque_custo = sum(
+            (self._decimal(produto["valor_estoque_custo"]) for produto in analises_produtos),
+            Decimal("0"),
+        )
+        valor_em_risco = self._decimal(risco_validade["valor_em_risco"])
+        receita_total = sum(
+            (self._decimal(produto["receita_total"]) for produto in analises_produtos),
+            Decimal("0"),
+        )
+        produtos_ativos = max(len(analises_produtos), 1)
+        percentual_valor_em_risco = self._percentual(valor_em_risco, valor_estoque_custo)
+        percentual_perdas_sobre_receita = self._percentual(perdas_total_custo, receita_total)
+        percentual_parados_relevantes = Decimal(parados_relevantes) / Decimal(produtos_ativos) * Decimal("100")
+        penalidade_margem = self._penalidade_margem(margem_geral, houve_vendas)
 
-        score = Decimal("100")
-        score -= min(Decimal(vencidos * 15), Decimal("40"))
-        score -= min(Decimal(proximos * 6), Decimal("24"))
-        score -= min(Decimal(estoque_baixo * 8), Decimal("32"))
-        score -= min(Decimal(rupturas * 12), Decimal("36"))
-        score -= min(Decimal(parados_relevantes * 5), Decimal("20"))
-        if perdas_relevantes:
-            score -= Decimal("10")
-        if margem_baixa:
-            score -= Decimal("10")
-        score = max(Decimal("0"), min(score, Decimal("100")))
+        pilares = {
+            "validade": {
+                "score": self._float(
+                    self._limitar_score(
+                        Decimal("100")
+                        - min(Decimal(vencidos) * Decimal("5"), Decimal("30"))
+                        - min(Decimal(proximos) * Decimal("1.5"), Decimal("15"))
+                        - min(percentual_valor_em_risco, Decimal("30"))
+                    ),
+                    0,
+                ),
+                "peso": 0.35,
+                "fatores": {
+                    "vencidos": vencidos,
+                    "proximos_vencimento": proximos,
+                    "valor_em_risco": self._float(valor_em_risco, 2),
+                    "percentual_valor_em_risco": self._float(percentual_valor_em_risco, 1),
+                },
+            },
+            "estoque": {
+                "score": self._float(
+                    self._limitar_score(
+                        Decimal("100")
+                        - min(Decimal(rupturas) * Decimal("25"), Decimal("50"))
+                        - min(Decimal(estoque_baixo) * Decimal("6"), Decimal("25"))
+                        - min(Decimal(compras_prioritarias) * Decimal("4"), Decimal("20"))
+                    ),
+                    0,
+                ),
+                "peso": 0.25,
+                "fatores": {
+                    "rupturas_previstas": rupturas,
+                    "estoque_baixo": estoque_baixo,
+                    "compras_prioritarias": compras_prioritarias,
+                },
+            },
+            "financeiro": {
+                "score": self._float(
+                    self._limitar_score(
+                        Decimal("100")
+                        - min(percentual_perdas_sobre_receita * Decimal("0.8"), Decimal("45"))
+                        - penalidade_margem
+                    ),
+                    0,
+                ),
+                "peso": 0.25,
+                "fatores": {
+                    "perdas_total_custo": self._float(perdas_total_custo, 2),
+                    "percentual_perdas_sobre_receita": self._float(percentual_perdas_sobre_receita, 1),
+                    "margem_lucro_percentual": self._float(margem_geral, 1),
+                    "penalidade_margem": self._float(penalidade_margem, 0),
+                },
+            },
+            "giro": {
+                "score": self._float(
+                    self._limitar_score(
+                        Decimal("100")
+                        - min(percentual_parados_relevantes * Decimal("0.6"), Decimal("45"))
+                    ),
+                    0,
+                ),
+                "peso": 0.15,
+                "fatores": {
+                    "produtos_parados_relevantes": parados_relevantes,
+                    "produtos_ativos": produtos_ativos,
+                    "percentual_parados_relevantes": self._float(percentual_parados_relevantes, 1),
+                },
+            },
+        }
+        score = self._limitar_score(
+            sum(
+                self._decimal(pilar["score"]) * self._decimal(pilar["peso"])
+                for pilar in pilares.values()
+            )
+        )
 
         if score >= Decimal("80"):
             classificacao = "saudavel"
             mensagem = "Operação saudável, sem riscos críticos no momento."
-        elif score >= Decimal("55"):
+        elif score >= Decimal("50"):
             classificacao = "atencao"
             mensagem = "Operação requer atenção por risco de validade e reposição."
         else:
             classificacao = "critica"
             mensagem = "Operação crítica: existem produtos vencidos, ruptura prevista ou perdas relevantes."
 
+        if classificacao == "saudavel":
+            mensagem = "Operação saudável, com riscos sob controle no momento."
+        elif classificacao == "atencao":
+            mensagem = self._mensagem_saude_atencao(pilares)
+        else:
+            mensagem = self._mensagem_saude_critica(pilares)
+
         return {
             "score": self._float(score, 0),
             "classificacao": classificacao,
             "mensagem": mensagem,
+            "pilares": pilares,
             "fatores": {
                 "vencidos": vencidos,
                 "proximos_vencimento": proximos,
                 "estoque_baixo": estoque_baixo,
                 "rupturas_previstas": rupturas,
                 "produtos_parados_relevantes": parados_relevantes,
+                "compras_prioritarias": compras_prioritarias,
                 "perdas_relevantes": perdas_relevantes,
                 "margem_geral_baixa": margem_baixa,
             },
         }
+
+    def _limitar_score(self, score):
+        return max(Decimal("0"), min(self._decimal(score), Decimal("100")))
+
+    def _penalidade_margem(self, margem_geral, houve_vendas):
+        if not houve_vendas:
+            return Decimal("0")
+        if margem_geral >= Decimal("35"):
+            return Decimal("0")
+        if margem_geral >= Decimal("25"):
+            return Decimal("10")
+        if margem_geral >= Decimal("15"):
+            return Decimal("20")
+        return Decimal("35")
+
+    def _mensagem_saude_atencao(self, pilares):
+        pior_pilar = self._pior_pilar_saude(pilares)
+        mensagens = {
+            "validade": "Operação em atenção: validade concentra o maior risco gerencial.",
+            "estoque": "Operação em atenção: reposição e cobertura precisam de acompanhamento.",
+            "financeiro": "Operação em atenção: perdas ou margem estão pressionando o resultado.",
+            "giro": "Operação em atenção: há capital parado em produtos de baixo giro.",
+        }
+        return mensagens.get(pior_pilar, "Operação em atenção: acompanhe os principais pilares do negócio.")
+
+    def _mensagem_saude_critica(self, pilares):
+        pior_pilar = self._pior_pilar_saude(pilares)
+        mensagens = {
+            "validade": "Operação crítica: validade exige retirada, perda ou promoção imediata.",
+            "estoque": "Operação crítica: cobertura e rupturas podem afetar vendas hoje.",
+            "financeiro": "Operação crítica: perdas ou margem comprometem o resultado do período.",
+            "giro": "Operação crítica: excesso de produtos parados está travando capital.",
+        }
+        return mensagens.get(pior_pilar, "Operação crítica: trate os riscos prioritários do dashboard.")
+
+    def _pior_pilar_saude(self, pilares):
+        return min(pilares.items(), key=lambda item: item[1]["score"])[0]
 
     def _montar_resumo_executivo(
         self,

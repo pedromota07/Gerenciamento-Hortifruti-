@@ -24,19 +24,19 @@ class UsuarioService:
         )
 
         self.session.add(usuario)
-        return self._commit(usuario, "Ja existe usuario com o mesmo email.")
+        return self._commit(usuario, "Já existe usuário com o mesmo email.")
 
     def atualizar(self, usuario_id, data):
         usuario = self.session.get(Usuario, usuario_id)
         if usuario is None:
-            raise DomainError("Usuario nao encontrado.", 404)
+            raise DomainError("Usuário não encontrado.", 404)
 
         if "perfil" in data:
             usuario.perfil = PerfilUsuario(data["perfil"])
         if "ativo" in data:
             usuario.ativo = data["ativo"]
 
-        return self._commit(usuario, "Ja existe usuario com o mesmo email.")
+        return self._commit(usuario, "Já existe usuário com o mesmo email.")
 
     def _commit(self, usuario, conflict_message):
         try:

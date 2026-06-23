@@ -59,7 +59,7 @@ export default function PaginaLogin() {
             <span className={styles.brandMark}><i className="pi pi-sparkles" /></span>
             <div>
               <strong>Hortifruti</strong>
-              <span>Gestão inteligente</span>
+              <span>Gestão de hortifruti</span>
             </div>
           </div>
 

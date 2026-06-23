@@ -18,7 +18,7 @@ class ProdutoService:
     def buscar(self, produto_id):
         produto = self.session.get(Produto, produto_id)
         if produto is None:
-            raise DomainError("Produto nao encontrado.", 404)
+            raise DomainError("Produto não encontrado.", 404)
         return produto
 
     def listar_camadas_abertas(self, produto_id):
@@ -76,6 +76,6 @@ class ProdutoService:
             self.session.commit()
         except IntegrityError:
             self.session.rollback()
-            raise DomainError("Ja existe produto com o mesmo nome e categoria.", 409)
+            raise DomainError("Já existe produto com o mesmo nome e categoria.", 409)
 
         return produto

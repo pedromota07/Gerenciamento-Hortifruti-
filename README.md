@@ -17,11 +17,13 @@ O projeto é dividido em dois módulos:
 - Saídas por venda ou perda.
 - Consumo de estoque por FEFO, priorizando os lotes com menor validade.
 - Bloqueio de movimentações inválidas, como produto inativo, estoque insuficiente ou saída sobre lote vencido.
-- Dashboard Orientado à Decisão, com KPIs, alertas priorizados, recomendações de reposição, risco de validade e resumo executivo automático.
+- Dashboard Orientado à Decisão, com KPIs, alertas priorizados, saúde operacional por pilares, reposição recomendada, risco de validade e resumo executivo.
+- Comparação com período anterior para receita, lucro bruto, margem e perdas, com proteção contra percentuais enganosos quando a base anterior é muito baixa.
+- Ranking de produtos com maior perda, ranking de menor margem e sugestão de compra baseada em giro, estoque vendável e cobertura.
 - Tela de PDV para registrar vendas.
 - Relatórios de produtos mais vendidos, movimentações, validade e resultado financeiro.
 - Scripts para popular ou reiniciar a base de demonstração.
-- Testes automatizados dos principais fluxos funcionais do backend.
+- Testes automatizados dos principais fluxos funcionais do backend e teste E2E do dashboard no frontend.
 
 ## Tecnologias
 
@@ -44,6 +46,7 @@ O projeto é dividido em dois módulos:
 - React
 - PrimeReact
 - PrimeIcons
+- Playwright
 
 ## Estrutura do projeto
 
@@ -134,14 +137,21 @@ Para carregar uma base demonstrativa com produtos, usuários e movimentações:
 python scripts\seed_showcase.py
 ```
 
-Esse seed recria a base com dados realistas preparados para relatorios e para o
-Dashboard Orientado a Decisao. Ele gera 42 produtos, sendo 40 ativos e 2
-inativos, mais de 300 movimentacoes distribuidas nos ultimos 90 a 120 dias,
+Esse seed recria a base com dados realistas preparados para relatórios e para o
+Dashboard Orientado à Decisão. Ele gera 42 produtos, sendo 40 ativos e 2
+inativos, mais de 300 movimentações distribuídas nos últimos 90 a 120 dias,
 incluindo vendas, entradas, perdas, produtos de alto giro com estoque baixo,
-camadas vencidas, camadas proximas do vencimento, produtos parados, margens
-variadas, margem baixa, perdas classificaveis por observacao e estoque saudavel.
-Ao final, o script imprime um resumo com
-quantidades, indicadores financeiros, validade e top 5 mais vendidos.
+camadas vencidas, camadas próximas do vencimento, produtos parados, margens
+variadas, margem baixa, perdas classificáveis por observação e estoque saudável.
+Ao final, o script imprime um resumo com quantidades, indicadores financeiros,
+validade e top 5 mais vendidos.
+
+Para normalizar a base local de demonstração preservando produtos e usuários,
+recriando o histórico recente e removendo observações das movimentações, execute:
+
+```powershell
+python scripts\normalizar_banco_demo.py
+```
 
 Inicie a API:
 
@@ -233,19 +243,23 @@ exigem que o usuário autenticado tenha perfil de gerente.
 | Mais vendidos | `GET /api/relatorios/mais-vendidos` |
 | Financeiro | `GET /api/relatorios/financeiro` |
 | Validade | `GET /api/relatorios/validade` |
-| Dashboard inteligente | `GET /api/relatorios/dashboard-inteligente` |
+| Dashboard orientado à decisão | `GET /api/relatorios/dashboard-inteligente` |
 
 ### Dashboard Orientado à Decisão
 
 O endpoint `GET /api/relatorios/dashboard-inteligente` consolida regras de negócio para apoiar decisões diárias da operação. Ele exige JWT como os demais relatórios e retorna:
 
 - KPIs financeiros e operacionais.
-- Alertas priorizados por severidade.
-- Sugestões de reposição baseadas em giro e estoque disponível.
+- Saúde operacional com os pilares Validade, Estoque, Financeiro e Giro.
+- Comparação com o período anterior para receita, lucro bruto, margem e perdas.
+- Alertas priorizados por severidade, causa, ação sugerida e impacto estimado.
+- Sugestões de reposição baseadas em giro, estoque vendável e cobertura.
 - Produtos vencidos ou próximos do vencimento.
 - Produtos parados ou com baixo giro.
-- Análise de margem, perdas, ranking de venda e séries para gráficos.
-- Resumo executivo com frases automáticas para orientar a ação.
+- Ranking de produtos com maior perda.
+- Ranking de produtos com menor margem.
+- Ranking de venda e séries para gráficos.
+- Resumo executivo para orientar a ação do gerente.
 
 Parâmetros opcionais:
 
@@ -257,15 +271,18 @@ Parâmetros opcionais:
 | `data_inicial` | Início do período de análise no formato `YYYY-MM-DD`. | últimos 30 dias |
 | `data_final` | Fim do período de análise no formato `YYYY-MM-DD`. | data atual |
 
-O contrato principal inclui `periodo_analise`, `saude_operacional`, `kpis`,
+O contrato principal inclui `periodo_analise`, `saude_operacional`,
+`saude_operacional.pilares`, `kpis`, `comparativo_periodo`,
 `resumo_executivo`, `prioridades_hoje`, `sugestoes_reposicao`,
 `risco_validade`, `produtos_parados`, `analise_margem`, `analise_perdas`,
 `mais_vendidos` e `series_graficos`.
 
 Para validar manualmente no frontend, rode o seed, inicie API e frontend, entre
 com `admin@hortifruti.local / admin123` e abra `/dashboard`. A tela deve mostrar
-score operacional, KPIs, prioridades com causa/ação/impacto, reposição, validade,
-produtos parados, margem, perdas e top vendidos.
+score operacional, pilares de saúde, KPIs com comparação de período, prioridades
+com causa/ação/impacto, reposição, validade, produtos parados, margem, perdas e
+top vendidos. Os itens de alerta e de compra prioritária levam para a tela de
+detalhes do produto em `/produtos/:id`.
 
 ## Testes
 
@@ -275,6 +292,21 @@ Na raiz do projeto, execute a suíte com:
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend/tests
+```
+
+Para validar o frontend, execute:
+
+```powershell
+cd frontend
+npm.cmd run build
+npm.cmd run test:e2e
+```
+
+Na primeira execução do Playwright na máquina, pode ser necessário instalar o
+navegador de teste:
+
+```powershell
+npx.cmd playwright install chromium
 ```
 
 Também há uma validação funcional documentada em:
